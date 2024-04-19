@@ -1,3 +1,9 @@
+'''
+This file is the continuation of the Regression.sh script.
+It uses the stored initializations from thr Regression.sh 
+script to obtain the posterior densities for a given data set
+'''
+
 import numpy as np #type: ignore
 import cmdstanpy #type: ignore
 import os
