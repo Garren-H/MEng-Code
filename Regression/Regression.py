@@ -1,3 +1,13 @@
+'''
+This file is used to initialize the NRTL parameters and data-model mismatch parameters.
+The stan code 'Stan Models/model1.stan' and 'Stan Models/model2.stan' are used to initialize
+the variance parameters using the GP equivalent model followed by estimating the parameters
+of the NRTL model (using the fixed variance).
+
+The initializations are then stored and used in RegressionStep3.py file to obtain the posterior
+samples using the initializations from this sheet
+'''
+
 import numpy as np #type: ignore
 import cmdstanpy #type: ignore
 import os
