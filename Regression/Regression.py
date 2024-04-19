@@ -6,6 +6,9 @@ of the NRTL model (using the fixed variance).
 
 The initializations are then stored and used in RegressionStep3.py file to obtain the posterior
 samples using the initializations from this sheet
+
+Note: The code was written to be executed on a linux cluster, hence the Regression.sh script 
+      is used to call this script
 '''
 
 import numpy as np #type: ignore
