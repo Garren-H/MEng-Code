@@ -1,12 +1,17 @@
 #!/bin/bash
-cd 
-cd Regression
-cd Data
+
+# The file updates the files to run by checking if files are completed or currently running
+# The files to run are stored in a .txt file which is used by the Regression_qsub.sh script
+
+cd # navigate to home directory
+cd Regression # Navigate to subdirectory Regression
+cd Data # Navigate to subdirectory Data
 
 file_paths=($(basename -s .json ./*.json)) # extract all names excluding extension
 
-cd ..
+cd .. # navigate back a level to home/user/Regression
 
+# Remove current .txt files
 rm Completed_Files.txt
 rm Files_to_run.txt
 
