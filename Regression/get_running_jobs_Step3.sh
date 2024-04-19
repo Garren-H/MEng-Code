@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# Similar to the get_running_jobs.sh script but now check for job names with 
+# RegressionStep3_<data_file> instead.
+# The <data_file> part is then stored in the Files_running_Step3.txt file
+
 cd
 cd Regression
 
