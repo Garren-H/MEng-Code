@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# Similar to the get_file_to_move.sh script but slightly different in the way it checks for completed files
+
 cd 
 cd Regression
 cd Data
