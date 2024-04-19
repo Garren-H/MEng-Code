@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Similar as the Regression_qsub.sh script, but for
+# running the RegressionStep3.py script instead of 
+# the Regression.py script
+
 # Select wall time
 #PBS -l walltime=24:00:00
 
