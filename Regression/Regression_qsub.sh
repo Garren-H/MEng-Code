@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# This script is used for the 'automated' subbing of a number
+# of Regression.sh scripts with different datafiles to run
+# co-currently on a PBS server as apposed to using mpi-processes
+# or for loops.
+# The advantage of this approach is that we can handle the load 
+# on the cluster better if a shared cluster is used.
+# This script calls a bunch of other scripts is updates the running files
+# and completed files in the PBS cluster and stores the files ro run in a
+# .txt file. 
+# These indices of the files to run is then used as input to queue the number
+# of scripts to run concurrently <N_bathces>
+
 # Check if the number of batches is provided as an argument
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <N_batches>"
