@@ -1,4 +1,5 @@
-
+// Stan code for computing the initalizations of the NRTL parameters given constant data-model mismatch parameter
+// Can be used as an alternative model if the data-model mismatch error is known
 functions {
     vector NRTL(vector x, vector T, vector p12, vector p21, real a) {
         int N = rows(x);
@@ -34,7 +35,7 @@ parameters {
 }
 
 model {
-    vector[4] p12 = p12_raw .* scaling;
+    vector[4] p12 = p12_raw .* scaling;Update Regression.py
     vector[4] p21 = p21_raw .* scaling;
     vector[N_points] y_means = NRTL(x, T, p12, p21, a);
     
