@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# This script is used for the submission of the Regression.pyscript 
+# on a PBS cluster.
+# This script is called in the Regression_qsub.sh script which 
+# automatically choses which datasets to run based on completed 
+# and currently running files.
+
+# The usage for this script is Regression.sh <input_path>
+# Where: input_path is an integer referring to the <input_path>.json
+#        file to use which has the experimental data for the current
+#        dataset considered. This integrer is passed to the Regression.py
+#        script which choses the correct data file.
+
 # Select wall time
 #PBS -l walltime=24:00:00
 
