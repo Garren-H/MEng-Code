@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Similar to the Regression_qsub.sh file but for queuing jobs
+# using RegressionStep3.py script
+
 # Check if the number of batches is provided as an argument
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <N_batches>"
