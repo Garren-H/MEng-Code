@@ -29,8 +29,8 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         }
 
         real ps_like(array[] int N_slice, int start, int end, vector y, vector x, vector T, array[] matrix U_raw, 
-        array[] matrix V_raw, vector v_ARD, vector v, vector scaling, real a, real error, array[] int N_points,
-        array[,] int Idx_known) {
+          array[] matrix V_raw, vector v_ARD, vector v, vector scaling, real a, real error, array[] int N_points,
+          array[,] int Idx_known) {
             real all_target = 0;
             for (i in start:end) {
                 vector[4] p12_raw;
@@ -54,43 +54,38 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
 
 
     data {
-        int N_known;
-        array[N_known] int N_points;
-        vector[sum(N_points)] x;
-        vector[sum(N_points)] T;
-        vector[sum(N_points)] y;
-        vector[4] scaling;
-        real a;
-        int grainsize;
-
-        int N;
-        int D;
-        array[N_known,2] int Idx_known;
-    '''
+        int N_known;                    // number of known data points
+        array[N_known] int N_points;    // number of data points in each known data set
+        vector[sum(N_points)] x;        // mole fraction
+        vector[sum(N_points)] T;        // temperature
+        vector[sum(N_points)] y;        // excess enthalpy
+        vector[4] scaling;              // scaling factor for NRTL parameter
+        real a;                         // alpha value for NRTL model
+        int grainsize;                  // grainsize for parallelization
+        int N;                          // number of compounds
+        int D;                          // number of features
+        array[N_known,2] int Idx_known; // indices of known data points'''
     if variance_known: # include known data-model variance data input
         model_code += '''
-        vector<lower=0>[N_known] v;
-    '''
+        vector<lower=0>[N_known] v;     // known data-model variance'''
 
     if include_clusters: # include cluster data input
         model_code += '''   
-            int K; // number of clusters
-            matrix[K, N] C; //cluster assignment
-            vector<lower=0>[K] v_cluster;
-        '''
+        int K;                          // number of clusters
+        matrix[K, N] C;                 // cluster assignment
+        vector<lower=0>[K] v_cluster;   // within cluster variance'''
 
     model_code += '''
     }
 
     transformed data {
-        real error = 0.01;
-        array[N_known] int N_slice;
+        real error = 0.01;              // error in the data (fraction of experimental data)
+        array[N_known] int N_slice;     // slice indices for parallelization
     '''
     
     if include_clusters: # transform cluster variance parameters into a vector for easier processing
         model_code += '''
-        matrix[D, N] E_cluster = rep_matrix(v_cluster', D) * C;
-        '''
+        matrix[D, N] E_cluster = rep_matrix(v_cluster', D) * C; // within cluster varaince matrix'''
 
     model_code += '''
         for (i in 1:N_known) {
@@ -98,40 +93,43 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         }
     }
 
-    parameters {
-    '''
+    parameters {'''
 
     if not variance_known: # include data-model variance as parameter to model
         model_code += '''
-        vector<lower=0>[N_known] v;
-        '''
+        vector<lower=0>[N_known] v;       // data-model variance'''
 
     if include_clusters: # include cluster means as parameters
         model_code += '''
-        array[4] matrix[D,K] U_raw_means; // cluster means
-        array[4] matrix[D,K] V_raw_means; // cluster means
-        '''
+        array[4] matrix[D,K] U_raw_means; // U_raw cluster means
+        array[4] matrix[D,K] V_raw_means; // V_raw cluster means'''
 
     model_code += '''
-        array[4] matrix[D,N] U_raw; // feature matrices U
-        array[4] matrix[D,N] V_raw; // feature matrices V
-        real<lower=0, upper=5> scale; // scale dictating the strenght of ARD effect
-    '''
+        array[4] matrix[D,N] U_raw;       // feature matrices U
+        array[4] matrix[D,N] V_raw;       // feature matrices V
+        real<lower=0, upper=5> scale;     // scale dictating the strenght of ARD effect'''
 
     # generate different parameters for each ARD variance parameter, and lower bound by previous
-    model_code += '    real<lower=0> v_ARD_1;\n'
+    model_code += '''
+        real<lower=0> v_ARD_1;            // ARD variance parameter 1'''
     for d in range(1,D):
-        model_code += f'    real<lower=v_ARD_{d}> v_ARD_{d+1};\n'
-    model_code += '}'
-    model_code += '\n'
+        model_code += f'''
+        real<lower=v_ARD_{d}> v_ARD_{d+1};      // ARD variance parameter {d+1}'''
+    model_code += '''
+    }
+    '''
 
     # create transformed parameters block where the ARD varaicnes are combined
-    model_code += 'transformed parameters {\n'
-    model_code += f'    vector<lower=0>[D] v_ARD = ['
+    model_code += '''
+    transformed parameters {'''
+    model_code += f'''
+        vector<lower=0>[D] v_ARD = ['''
     for d in range(1,D):
         model_code += f'v_ARD_{d}, '
-    model_code += f"v_ARD_{D}]';\n"
-    model_code += '}\n\n'
+    model_code += f"v_ARD_{D}]'; // ARD variance vector"
+    model_code += '''
+    }
+    '''
 
     model_code += '''
     model {
@@ -147,6 +145,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
 
     if include_clusters: # include cluster mean priors
         model_code += '''
+        // priors for cluster means and feature matrices 
         for (i in 1:4) {
             to_vector(U_raw_means[i]) ~ std_normal();
             to_vector(V_raw_means[i]) ~ std_normal();
@@ -156,12 +155,14 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         '''
     else: # exclude cluster parameters 
         model_code += '''
+        // priors for feature matrices
         for (i in 1:4) {
             to_vector(U_raw[i]) ~ std_normal();
             to_vector(V_raw[i]) ~ std_normal();
         }
         '''
     model_code += '''
+        // Likelihood function
         target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
                                 V_raw, v_ARD, v, scaling, a, error, N_points,
                                 Idx_known);
