@@ -27,7 +27,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
             vector[N] G21 = exp(-at21);
             vector[N] term1 = ( ( (1-x) .* G12 .* (1 - at12) + x .* square(G12) ) ./ square((1-x) + x .* G12) ) .* dt12_dT;
             vector[N] term2 = ( ( x .* G21 .* (1 - at21) + (1-x) .* square(G21) ) ./ square(x + (1-x) .* G21) ) .* dt21_dT;
-            return -8.314 * square(T) .* x .* (1-x) .* ( term1 + term2);
+            return -8.314 * square(T) .* x .* (1-x) .* ( term1 + term2 );
         }
 
         real ps_like(array[] int N_slice, int start, int end, vector y, vector x, vector T, array[] matrix U_raw, 
