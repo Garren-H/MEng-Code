@@ -61,7 +61,7 @@ if variance_known:
 
 # obtain cluster information; first;y obtain number of functional groups to give as maximum to the number of clusters
 if include_clusters:
-    with pd.ExcelFile("All Data.xlsx") as f:
+    with pd.ExcelFile("../All Data.xlsx") as f:
         comp_names = pd.read_excel(f, sheet_name='Pure compounds')
         functional_groups = np.sort(functional_groups)
     if functional_groups[0] == 'all':
