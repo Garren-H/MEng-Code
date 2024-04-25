@@ -15,3 +15,4 @@ module load app/stan/2.34
 
 python3 Hybrid_PMF.py ${include_clusters} ${variance_known} 
 
+# usage for PBS: qsub -v include_clusters=1,variance_known=1 Hybrid_PMF.sh
