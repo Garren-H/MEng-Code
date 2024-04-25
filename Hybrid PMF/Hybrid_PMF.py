@@ -129,7 +129,7 @@ print('Step1: Sampling using random initializations')
 
 fit1 = Hybrid_PMF.sample(data=f'{path}/data.json', output_dir=output_dir1, 
                          chains=chains, parallel_chains=chains,
-                         threads_per_chain=threads_per_chain, 
+                         threads_per_chain=threads_per_chain, refresh=1,
                          inits=inits1, iter_warmup=5000, iter_sampling=1000)
 
 # Step 2. Optimizing each chain using initializations from above
@@ -182,7 +182,6 @@ for i in range(chains):
 
 print('Step3: Sampling using MAP estimates from above')
 fit3 = Hybrid_PMF.sample(data=f'{path}/data.json', output_dir=output_dir3,
-                         inits=inits3, refresh=100, iter_warmup=5000, 
+                         inits=inits3, refresh=1, iter_warmup=5000, 
                          iter_sampling=1000, chains=chains, parallel_chains=chains, 
-                         threads_per_chain=threads_per_chain, max_treedepth=12, 
-                         adapt_delta=0.99)
+                         threads_per_chain=threads_per_chain, max_treedepth=12)
