@@ -43,7 +43,88 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         // Combined kernel
         matrix K(vector x1, vector x2, vector T1, vector T2, int order) {
             return Kx(x1, x2, order) .* KT(T1, T2); 
-        }
+        }'''
+    if include_clusters:
+        model_code += '''
+        // functions for the priors of the feature matrices and means thereof
+        real ps_feature_matrices(array[] M_slice, int start, int end, array[] matrix U_raw_means,
+          array[] matrix V_raw_means, array[] U_raw, array[] V_raw, matrix E_cluster, matrix C) {
+            real all_target;
+            for (m in start:end) {
+                all_target += std_normal(to_vector(U_raw_means[m]));
+                all_target += std_normal(to_vector(V_raw_means[m]));
+                all_target += normal_lupdf(to_vector(U_raw[m]) | to_vector(U_raw_means[m]*C), to_vector(E_cluster));
+                all_target += normal_lupdf(to_vector(V_raw[m]) | to_vector(U_raw_means[m]*C), to_vector(E_cluster));
+            }
+            return all_target;
+          }
+        '''
+    else:
+        model_code += '''
+        // functions for the priors of the feature matrices
+        real ps_feature_matrices(array[] M_slice, int start, int end, array[] U_raw, 
+          array[] V_raw) {
+            real all_target;
+            for (m in start:end) {
+                all_target += std_normal(to_vector(U_raw[m]));
+                all_target += std_normal(to_vector(V_raw[m]));
+            }
+            return all_target;
+          }
+        '''
+    
+    if variance_known: 
+        model_code += '''
+        // function for the likelihood and prior on smoothed values
+        real ps_like(array[] N_slice, int start, int end, vector y, matrix cov_y_yMC, matrix cov_y_MC,
+          array[,] Idx_all, int M, int N_T, int N_MC, int N_C, matrix K_MC_inv, int N_known, array[] N_points,
+          vector v_ARD, array[,] matrix U_raw, array[,] matrix V_raw, matrix y_MC, matrix A_y_yMC) {
+            real all_target;
+            for (i in start:end) {
+                vector[N_MC] y_MC_pred;
+                for(t in 1:N_T) {
+                    for (m in 1:M-1) {
+                        y_MC_pred[m+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,1]] .* v_ARD, V_raw[t,m,:,Idx_all[i,2]]);
+                        y_MC_pred[M-m+1+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,2]] .* v_ARD, V_raw[t,m,:,Idx_all[i,1]]); 
+                    }
+                    y_MC_pred[M+N_C*(t-1)] = dot_product(U_raw[t,M,:,Idx_all[i,1]] .* v_ARD, U_raw[t,M,:,Idx_all[i,2]]);
+                }
+                all_target += multi_normal_lupdf(y_MC[:,i] | y_MC_pred, cov_y_MC);
+
+                if (i <= N_known) {
+                    vector[N_points[i]] y_pred = A_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]),:] * y_MC[:,i];
+                    all_target += multi_normal_lupdf(y[sum(N_points[:i-1])+1:sum(N_points[:i])] | y_pred, cov_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]]);
+                }
+            }
+            return all_target;
+          }'''
+    else:
+        model_code += '''
+        // function for the likelihood and prior on smoothed values
+        real ps_like(array[] N_slice, int start, int end, vector y, matrix cov_y_yMC, matrix cov_y_MC,
+          array[,] Idx_all, int M, int N_T, int N_MC, int N_C, matrix K_MC_inv, int N_known, array[] N_points,
+          vector v_ARD, array[,] matrix U_raw, array[,] matrix V_raw, matrix y_MC, matrix A_y_yMC) {
+            real all_target;
+            for (i in start:end) {
+                vector[N_MC] y_MC_pred;
+                for(t in 1:N_T) {
+                    for (m in 1:M-1) {
+                        y_MC_pred[m+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,1]] .* v_ARD, V_raw[t,m,:,Idx_all[i,2]]);
+                        y_MC_pred[M-m+1+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,2]] .* v_ARD, V_raw[t,m,:,Idx_all[i,1]]); 
+                    }
+                    y_MC_pred[M+N_C*(t-1)] = dot_product(U_raw[t,M,:,Idx_all[i,1]] .* v_ARD, U_raw[t,M,:,Idx_all[i,2]]);
+                }
+                all_target += multi_normal_lupdf(y_MC[:,i] | y_MC_pred, cov_y_MC);
+
+                if (i <= N_known) {
+                    vector[N_points[i]] y_pred = A_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]),:] * y_MC[:,i];
+                    all_target += multi_normal_lupdf(y[sum(N_points[:i-1])+1:sum(N_points[:i])] | y_pred, add_diag(cov_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]],v[i]));
+                }
+            }
+            return all_target;
+          }'''
+
+    model_code += '''
     }
 
     data {
@@ -59,6 +140,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         vector[N_T] T2_int;                 // unique temperatures to interpolate
         vector[N_C] x2_int;                 // unique compositions to interpolate
         real<lower=0> v_MC;                 // error between of y_MC and (U,V)
+        int grainsize;                      // number of grainsizes
 
         int N; // number of components
         int D; // rank of feature matrices
@@ -84,11 +166,16 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         vector[sum(N_points)] var_data = square(0.01*y);                    // variance of the data
         int M = (N_C + 1) %/% 2;                                // interger division to get the number of U matrices
         int N_MC = N_C*N_T;                                     // overall number of interpolated datapoints per dataset
+        array[M-1] int M_slice;                                 // array of integers to be used as indices in parallel computations
+        array[N_known+N_unknown] int N_slice;                   // array of integers to be used as indices in parallel computations
+        array[N_known+N_unknown] int Idx_all = append_row(Idx_known, Idx_unknown); // indices of all datasets
         vector[N_MC] x2;                                        // concatnated vector of x2_int
         vector[N_MC] T2;                                        // concatenated vector of T2_int
         matrix[N_MC, N_MC] K_MC;                                // kernel for the interpolated data
+        matrix[N_MC, N_MC] K_MC_inv;                            // inverse of kernel matrix
         matrix[sum(N_points), max(N_points)] K_y;               // kernel for the experimental data
         matrix[sum(N_points), N_MC] K_y_yMC;                    // kernel between experimental and interpolated data
+        matrix[sum(N_points), N_MC] A_y_yMC;                    // Mapping from y_MC to y (predictive GP mean)
     '''
     
     if include_clusters: # transform cluster variance parameters into a vector for easier processing
@@ -110,6 +197,8 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
 
         // Assign MC kernel
         K_MC = add_diag(K(x2, x2, T2, T2, order), jitter);
+        K_MC_inv = inverse_spd(K_MC);
+
 
         // stable version to compute the covariance cov_y_MC
         {
@@ -122,7 +211,8 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         // Assign experimental data kernel and kernel between experimental and interpolated data
         for (i in 1:N_known) {
             K_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = add_diag(K(x1[sum(N_points[:i-1])+1:sum(N_points[:i])], x1[sum(N_points[:i-1])+1:sum(N_points[:i])], T1[sum(N_points[:i-1])+1:sum(N_points[:i])], T1[sum(N_points[:i-1])+1:sum(N_points[:i])], order), jitter);
-            K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K(x1[sum(N_points[:i-1])+1:sum(N_points[:i])], x2, T1[sum(N_points[:i-1])+1:sum(N_points[:i])], T2, order);'''
+            K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K(x1[sum(N_points[:i-1])+1:sum(N_points[:i])], x2, T1[sum(N_points[:i-1])+1:sum(N_points[:i])], T2, order);
+            A_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] * K_MC_inv;'''
     if variance_known:
         model_code += '''
             cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = add_diag(K_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]], var_data[sum(N_points[:i-1])+1:sum(N_points[:i])]+v[i]);
@@ -132,10 +222,29 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
                 matrix[N_MC, N_MC] L_MC = cholesky_decompose(K_MC);
                 matrix[N_MC, N_MC] L_MC_inv = inverse(L_MC);
                 matrix[N_points[i], N_MC] stable_inv =  K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] * L_MC_inv';
-                cov_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] - stable_inv * stable_inv';
+                cov_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] - stable_inv * stable_inv';
+            }'''
+    else:
+        model_code += '''
+            cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = K_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]], var_data[sum(N_points[:i-1])+1:sum(N_points[:i])];
+            
+            // stable version of the computation of cov_y_MC
+            {
+                matrix[N_MC, N_MC] L_MC = cholesky_decompose(K_MC);
+                matrix[N_MC, N_MC] L_MC_inv = inverse(L_MC);
+                matrix[N_points[i], N_MC] stable_inv =  K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] * L_MC_inv';
+                cov_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] - stable_inv * stable_inv';
             }'''
     model_code += '''
+
+            N_slice[i] = i;
         }
+
+        for (i in 1:N_unknown) {
+            N_slice[N_known+i] = N_known+i;
+        }
+
+        M_slice = N_slice[:M-1];
     }
 
     parameters {'''
@@ -162,7 +271,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         real<lower=v_ARD_{d}> v_ARD_{d+1};          // ARD variance parameter {d+1}'''
     model_code += '''
 
-        matrix[N_known+N_unknown, N_MC] y_MC;       // smoothed interpolated values
+        matrix[N_MC, N_known+N_unknown] y_MC;       // smoothed interpolated values
     }
     '''
 
@@ -194,19 +303,27 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         model_code += '''
         // priors for cluster means and feature matrices 
         for (t in 1:N_T) {
-            // create prior (parallel) functions for cluster means and feature matrices
+            target += reduce_sum(ps_feature_matrices, M_slice, grainsize, U_raw_means,
+                        V_raw_means, U_raw, V_raw, E_cluster, C);
+            to_vector(U_raw_means[t,M,:,:]) ~ std_normal();
+            to_vector(U_raw[t,M,:,:]) ~ normal(to_vector(U_raw_means[t,M,:,:]*C), to_vector(E_cluster));
         }
         '''
     else: # exclude cluster parameters 
         model_code += '''
         // priors for feature matrices
         for (t in 1:N_T) {
-            // create prior (parallel) function for feature matrices
+            target += reduce_sum(ps_feature_matrices, M_slice, grainsize, U_raw, 
+                        V_raw);
+            to_vector(U_raw[t,M,:,:]) ~ std_normal();
         }
         '''
+
     model_code += '''
         // Likelihood function
-        // create likelihood (parallel) function
+        target += reduce_sum(ps_like, N_slice, grainsize, y, cov_y_yMC, cov_y_MC,
+          Idx_all, M, N_T, N_MC, N_C, K_MC_inv, N_known, N_points,
+          v_ARD, U_raw, V_raw, y_MC, A_y_yMC);
     }
     '''
 
