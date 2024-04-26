@@ -58,8 +58,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         int N_C;                            // number of interpolated compositions
         vector[N_T] T2_int;                 // unique temperatures to interpolate
         vector[N_C] x2_int;                 // unique compositions to interpolate
-        real<lower=0, upper=1> alpha_lower; // lower bound on the contributions of priors
-        real<lower=0, upper=1> alpha_upper; // upper bound on the contributions of priors
+        real<lower=0> v_MC;                 // error between of y_MC and (U,V)
 
         int N; // number of components
         int D; // rank of feature matrices
@@ -89,7 +88,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         vector[N_MC] T2;                                        // concatenated vector of T2_int
         matrix[N_MC, N_MC] K_MC;                                // kernel for the interpolated data
         matrix[sum(N_points), max(N_points)] K_y;               // kernel for the experimental data
-        matrix[sum(N_points), N_MC] K_y_MC;                     // kernel between experimental and interpolated data
+        matrix[sum(N_points), N_MC] K_y_yMC;                    // kernel between experimental and interpolated data
     '''
     
     if include_clusters: # transform cluster variance parameters into a vector for easier processing
@@ -98,9 +97,11 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
     
     if variance_known: # include known data-model variance data input
          model_code += '''
-         matrix[sum(N_points), max(N_points)] cov_y;            // covariance matrix for the data''' 
+         matrix[sum(N_points), max(N_points)] cov_y;            // covariance matrix for the data
+         matrix[sum(N_points), max(N_points)] cov_y_yMC;        // conditional covariance matrix y|y_MC''' 
 
     model_code += '''
+        matrix[N_MC, N_MC] cov_y_MC;                            // conditional covariance of y_MC|(U,V)
         // Assign MC input vectors for temperature and composition
         for (i in 1:N_T) {
             x2[(i-1)*N_C+1:i*N_C] = x2_int;
@@ -110,13 +111,29 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         // Assign MC kernel
         K_MC = add_diag(K(x2, x2, T2, T2, order), jitter);
 
+        // stable version to compute the covariance cov_y_MC
+        {
+            matrix[N_MC, N_MC] L_MC = cholesky_decompose(add_diag(K_MC, v_MC));
+            matrix[N_MC, N_MC] L_MC_inv = inverse(L_MC);
+            matrix[N_MC, N_MC] stable_inv = K_MC * L_MC_inv'
+            cov_y_MC = K_MC - stable_inv * stable_inv';
+        }
+
         // Assign experimental data kernel and kernel between experimental and interpolated data
         for (i in 1:N_known) {
             K_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = add_diag(K(x1[sum(N_points[:i-1])+1:sum(N_points[:i])], x1[sum(N_points[:i-1])+1:sum(N_points[:i])], T1[sum(N_points[:i-1])+1:sum(N_points[:i])], T1[sum(N_points[:i-1])+1:sum(N_points[:i])], order), jitter);
-            K_y_MC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K(x1[sum(N_points[:i-1])+1:sum(N_points[:i])], x2, T1[sum(N_points[:i-1])+1:sum(N_points[:i])], T2, order);'''
+            K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K(x1[sum(N_points[:i-1])+1:sum(N_points[:i])], x2, T1[sum(N_points[:i-1])+1:sum(N_points[:i])], T2, order);'''
     if variance_known:
         model_code += '''
-            cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = add_diag(K_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]], var_data[sum(N_points[:i-1])+1:sum(N_points[:i])]+v[i]);'''
+            cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = add_diag(K_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]], var_data[sum(N_points[:i-1])+1:sum(N_points[:i])]+v[i]);
+            
+            // stable version of the computation of cov_y_MC
+            {
+                matrix[N_MC, N_MC] L_MC = cholesky_decompose(K_MC);
+                matrix[N_MC, N_MC] L_MC_inv = inverse(L_MC);
+                matrix[N_points[i], N_MC] stable_inv =  K_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] * L_MC_inv';
+                cov_y_yMC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = cov_y[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] - stable_inv * stable_inv';
+            }'''
     model_code += '''
         }
     }
@@ -125,25 +142,27 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
 
     if not variance_known: # include data-model variance as parameter to model
         model_code += '''
-        vector<lower=0>[N_known] v;       // data-model variance'''
+        vector<lower=0>[N_known] v;                 // data-model variance'''
 
     if include_clusters: # include cluster means as parameters
         model_code += '''
-        array[4] matrix[D,K] U_raw_means; // U_raw cluster means
-        array[4] matrix[D,K] V_raw_means; // V_raw cluster means'''
+        array[N_T, M] matrix[D,K] U_raw_means;      // U_raw cluster means
+        array[N_T, M-1] matrix[D,K] V_raw_means;    // V_raw cluster means'''
 
     model_code += '''
-        array[4] matrix[D,N] U_raw;       // feature matrices U
-        array[4] matrix[D,N] V_raw;       // feature matrices V
-        real<lower=0, upper=5> scale;     // scale dictating the strenght of ARD effect'''
+        array[N_T, M] matrix[D,N] U_raw;            // feature matrices U
+        array[N_T, M-1] matrix[D,N] V_raw;          // feature matrices V
+        real<lower=0, upper=5> scale;               // scale dictating the strenght of ARD effect'''
 
     # generate different parameters for each ARD variance parameter, and lower bound by previous
     model_code += '''
-        real<lower=0> v_ARD_1;            // ARD variance parameter 1'''
+        real<lower=0> v_ARD_1;                      // ARD variance parameter 1'''
     for d in range(1,D):
         model_code += f'''
-        real<lower=v_ARD_{d}> v_ARD_{d+1};      // ARD variance parameter {d+1}'''
+        real<lower=v_ARD_{d}> v_ARD_{d+1};          // ARD variance parameter {d+1}'''
     model_code += '''
+
+        matrix[N_known+N_unknown, N_MC] y_MC;       // smoothed interpolated values
     }
     '''
 
@@ -174,26 +193,20 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
     if include_clusters: # include cluster mean priors
         model_code += '''
         // priors for cluster means and feature matrices 
-        for (i in 1:4) {
-            to_vector(U_raw_means[i]) ~ std_normal();
-            to_vector(V_raw_means[i]) ~ std_normal();
-            to_vector(U_raw[i]) ~ normal(to_vector(U_raw_means[i] * C), to_vector(E_cluster));
-            to_vector(V_raw[i]) ~ normal(to_vector(V_raw_means[i] * C), to_vector(E_cluster));
+        for (t in 1:N_T) {
+            // create prior (parallel) functions for cluster means and feature matrices
         }
         '''
     else: # exclude cluster parameters 
         model_code += '''
         // priors for feature matrices
-        for (i in 1:4) {
-            to_vector(U_raw[i]) ~ std_normal();
-            to_vector(V_raw[i]) ~ std_normal();
+        for (t in 1:N_T) {
+            // create prior (parallel) function for feature matrices
         }
         '''
     model_code += '''
         // Likelihood function
-        target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
-                                V_raw, v_ARD, v, scaling, a, error, N_points,
-                                Idx_known, mapping, var_data);
+        // create likelihood (parallel) function
     }
     '''
 
