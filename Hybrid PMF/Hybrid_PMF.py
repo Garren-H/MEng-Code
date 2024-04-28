@@ -174,9 +174,9 @@ for i in range(chains):
     init = {}
     for key in dict_keys:
         try:
-            inits[key] = MAP[i].stan_variables()[key].tolist()
+            init[key] = MAP[i].stan_variables()[key].tolist()
         except:
-            inits[key] = MAP[i].stan_variables()[key]
+            init[key] = MAP[i].stan_variables()[key]
     with open(inits3[i], 'w') as f:
         json.dump(init, f)
 
