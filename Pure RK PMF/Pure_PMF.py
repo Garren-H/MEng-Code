@@ -168,8 +168,8 @@ iters = [[output_dir2[i], inits2[i]] for i in range(chains)]
 def optimize_chain(output_dir, inits):
     MAP = model.optimize(data=f'{path}/data.json', output_dir=output_dir,
                               inits=inits, iter=10000000, algorithm='lbfgs', 
-                              refresh=1000, tol_rel_grad=1e-10, tol_param=1e-20, 
-                              tol_obj=1e-8, show_console=True, refresh=100)
+                              refresh=100, tol_rel_grad=1e-10, tol_param=1e-20, 
+                              tol_obj=1e-8, show_console=True)
     return MAP
 
 with Pool(chains) as pool:
