@@ -7,7 +7,7 @@ import pandas as pd # type: ignore
 from multiprocessing import Pool
 
 # Append path to obtain other functions
-sys.path.append('/22796002/ghermanus')
+sys.path.append('/home/22796002')
 
 from generate_stan_model_code import generate_stan_code # type: ignore
 from All_code import subsets
