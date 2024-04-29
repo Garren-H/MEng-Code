@@ -49,7 +49,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
         // functions for the priors of the feature matrices and means thereof
         real ps_feature_matrices(array[] int M_slice, int start, int end, array[] matrix U_raw_means,
           array[] matrix V_raw_means, array[] matrix U_raw, array[] matrix V_raw, vector E_cluster, matrix C) {
-            real all_target;
+            real all_target = 0;
             for (m in start:end) {
                 all_target += std_normal_lpdf(to_vector(U_raw_means[m]));
                 all_target += std_normal_lpdf(to_vector(V_raw_means[m]));
@@ -64,7 +64,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
         // functions for the priors of the feature matrices
         real ps_feature_matrices(array[] int M_slice, int start, int end, array[] matrix U_raw, 
           array[] matrix V_raw) {
-            real all_target;
+            real all_target = 0;
             for (m in start:end) {
                 all_target += std_normal_lpdf(to_vector(U_raw[m]));
                 all_target += std_normal_lpdf(to_vector(V_raw[m]));
@@ -77,13 +77,13 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
           matrix mu_y_y_MC, matrix y_MC, matrix mu_y_MC, matrix prec_y_MC, vector var_data, vector v,
           array[,] int Idx_all, int M, int N_T, int N_MC, int N_C, int N_known, array[] int N_points,
           vector v_ARD, array[,] matrix U_raw, array[,] matrix V_raw) {
-            real all_target;
+            real all_target = 0;
             for (i in start:end) {
                 vector[N_MC] y_MC_pred;
                 for(t in 1:N_T) {
                     for (m in 1:M-1) {
                         y_MC_pred[m+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,1]] .* v_ARD, V_raw[t,m,:,Idx_all[i,2]]);
-                        y_MC_pred[M-m+1+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,2]] .* v_ARD, V_raw[t,m,:,Idx_all[i,1]]); 
+                        y_MC_pred[N_C-m+1+N_C*(t-1)] = dot_product(U_raw[t,m,:,Idx_all[i,2]] .* v_ARD, V_raw[t,m,:,Idx_all[i,1]]); 
                     }
                     y_MC_pred[M+N_C*(t-1)] = dot_product(U_raw[t,M,:,Idx_all[i,1]] .* v_ARD, U_raw[t,M,:,Idx_all[i,2]]);
                 }
@@ -149,7 +149,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
         matrix[N_MC, N_MC] K_MC;                                // kernel for the interpolated data
         matrix[N_MC, N_MC] K_MC_inv;                            // inverse of kernel
         matrix[sum(N_points), N_MC] mu_y_y_MC;                  // Mapping from y_MC to y (predictive GP mean)
-        matrix[sum(N_points), N_MC] cov_f2_f1;                  // covariance of y smmooth|y_MC'''
+        matrix[sum(N_points), max(N_points)] cov_f2_f1;                  // covariance of y smmooth|y_MC'''
     if variance_MC_known:
         model_code+='''
         matrix[N_MC, N_MC] mu_y_MC;                             // Mapping from reconstructions to smooth MC
@@ -198,7 +198,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
                                                             T1[sum(N_points[:i-1])+1:sum(N_points[:i])], 
                                                             T1[sum(N_points[:i-1])+1:sum(N_points[:i])], order);
                 // Computation of K12*K22^-1*K12^T
-                cov_f2_f1[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K_y - stable_inv * stable_inv';
+                cov_f2_f1[sum(N_points[:i-1])+1:sum(N_points[:i]), :N_points[i]] = K_y - stable_inv * stable_inv';
                 // Mapping from y_MC to y
                 mu_y_y_MC[sum(N_points[:i-1])+1:sum(N_points[:i]), :] = K_y_yMC * K_MC_inv;
 
@@ -208,6 +208,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
     if variance_MC_known:
         model_code += '''
             prec_y_MC = add_diag(K_MC_inv, v_MC^-1); // Precision matrix of y_MC
+            prec_y_MC = (prec_y_MC+prec_y_MC')/2; // ensure symmetricness
             // Computation of the mapping of the reconstructed entries to the smoothed values
             {
                matrix[N_MC, N_MC] prec_y_MC_noisy = K_MC * inverse_spd(add_diag(K_MC, v_MC));
@@ -275,6 +276,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
         model_code += '''
         matrix[N_MC, N_MC] mu_y_MC;                                 // Mapping from reconstructions to smooth MC
         matrix[N_MC, N_MC] prec_y_MC = add_diag(K_MC_inv, v_MC^-1); // Precision matrix of y_MC
+        prec_y_MC = (prec_y_MC+prec_y_MC')/2; // ensure symmetricness
         // Compute mapping from reconstructions to smooothed values
         {
             matrix[N_MC, N_MC] prec_y_MC_noisy = K_MC * inverse_spd(add_diag(K_MC, v_MC));
