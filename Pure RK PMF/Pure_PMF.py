@@ -1,8 +1,17 @@
 import numpy as np # type: ignore
 import json
-import cmdstanpy # type: ignore
-import sys
 import os
+
+# change stan tmpdir to home. Just a measure added for computations on the HPC which does not 
+# like writing to /tmp
+old_tmp = os.environ['TMPDIR'] # save previous tmpdir
+os.environ['TMPDIR'] = '/home/22796002' # update tmpdir
+
+import cmdstanpy # type: ignore
+
+os.environ['TMPDIR'] = old_tmp # change back to old_tmp
+
+import sys
 import pandas as pd # type: ignore
 from multiprocessing import Pool
 
