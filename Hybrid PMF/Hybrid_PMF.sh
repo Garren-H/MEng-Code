@@ -5,6 +5,7 @@
 #PBS -m abe
 #PBS -o Hybrid_PMF.out
 #PBS -e Hybrid_PMF.err
+#PBS -N Hybrid_PMF
 
 # make sure I'm the only one that can read my output
 umask 0077

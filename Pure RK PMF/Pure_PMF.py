@@ -218,7 +218,7 @@ inits3 = np.array(inits3) # convert to array for logical processing
 
 # replace inits which failed with max_lp
 max_lp = np.argmax([MAP[i].optimized_params_dict['lp__'] for i in range(chains)])
-inits3[valid_inits == False] = inits2[max_lp]
+inits3[valid_inits == False] = inits3[max_lp]
 
 inits3 = inits3.tolist() # convert back to list
 
