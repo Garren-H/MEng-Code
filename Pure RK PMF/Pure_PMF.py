@@ -183,3 +183,47 @@ def optimize_chain(output_dir, inits):
 
 with Pool(chains) as pool:
     MAP = pool.starmap(optimize_chain, iters)
+
+# Step 3. Sampling using MAP estimates from above
+
+output_dir3 = f'{path}/Step3'
+os.makedirs(output_dir3)
+inits3 = [f'{output_dir3}/inits_chain{j}.json' for j in range(chains)]
+for i in range(chains):
+    init = {}
+    for key in dict_keys:
+        try:
+            init[key] = MAP[i].stan_variables()[key].tolist()
+        except:
+            init[key] = MAP[i].stan_variables()[key]
+    with open(inits3[i], 'w') as f:
+        json.dump(init, f)
+
+# Some inits are known to make the method fail. We shall hence test
+# which of these inits are causing the method to fail and remove them
+def test_inits(i):
+    try:
+        fit = model.sample(data=f'{path}/data.json',
+                                inits=inits3[i], refresh=1, iter_warmup=10, 
+                                iter_sampling=10, chains=1, parallel_chains=1, 
+                                threads_per_chain=1, max_treedepth=5)
+        return True
+    except:
+        return False
+
+with Pool(chains) as pool:
+    valid_inits = pool.map(test_inits, range(chains))
+valid_inits = np.array(valid_inits) # convert to array for logical processing
+inits3 = np.array(inits3) # convert to array for logical processing
+
+# replace inits which failed with max_lp
+max_lp = np.argmax([MAP[i].optimized_params_dict['lp__'] for i in range(chains)])
+inits3[valid_inits == False] = inits2[max_lp]
+
+inits3 = inits3.tolist() # convert back to list
+
+print('Step3: Sampling using MAP estimates from above')
+fit3 = model.sample(data=f'{path}/data.json', output_dir=output_dir3,
+                         inits=inits3, refresh=1, iter_warmup=5000, 
+                         iter_sampling=1000, chains=chains, parallel_chains=chains, 
+                         threads_per_chain=threads_per_chain, max_treedepth=12)

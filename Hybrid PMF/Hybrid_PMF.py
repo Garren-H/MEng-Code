@@ -93,7 +93,7 @@ with open(f'{path}/Hybrid_PMF.stan', 'w') as f:
     f.write(model_code)
 
 # compile stan code
-Hybrid_PMF = cmdstanpy.CmdStanModel(stan_file=f'{path}/Hybrid_PMF.stan', cpp_options={'STAN_THREADS': True})
+model = cmdstanpy.CmdStanModel(stan_file=f'{path}/Hybrid_PMF.stan', cpp_options={'STAN_THREADS': True})
 
 
 # generate json file:
@@ -136,7 +136,7 @@ with open(inits1, 'w') as f:
 
 print('Step1: Sampling using random initializations')
 
-fit1 = Hybrid_PMF.sample(data=f'{path}/data.json', output_dir=output_dir1, 
+fit1 = model.sample(data=f'{path}/data.json', output_dir=output_dir1, 
                          chains=chains, parallel_chains=chains,
                          threads_per_chain=threads_per_chain, refresh=1,
                          inits=inits1, iter_warmup=5000, iter_sampling=1000)
@@ -165,7 +165,7 @@ print('Step2: Optimizing each chain using initializations from above')
 iters = [[output_dir2[i], inits2[i]] for i in range(chains)]
 
 def optimize_chain(output_dir, inits):
-    MAP = Hybrid_PMF.optimize(data=f'{path}/data.json', output_dir=output_dir,
+    MAP = model.optimize(data=f'{path}/data.json', output_dir=output_dir,
                               inits=inits, iter=10000000, algorithm='lbfgs', 
                               refresh=1000, tol_rel_grad=1e-10, tol_param=1e-20, 
                               tol_obj=1e-8)
@@ -189,8 +189,31 @@ for i in range(chains):
     with open(inits3[i], 'w') as f:
         json.dump(init, f)
 
+# Some inits are known to make the method fail. We shall hence test
+# which of these inits are causing the method to fail and remove them
+def test_inits(i):
+    try:
+        fit = model.sample(data=f'{path}/data.json',
+                                inits=inits3[i], refresh=1, iter_warmup=10, 
+                                iter_sampling=10, chains=1, parallel_chains=1, 
+                                threads_per_chain=1, max_treedepth=5)
+        return True
+    except:
+        return False
+
+with Pool(chains) as pool:
+    valid_inits = pool.map(test_inits, range(chains))
+valid_inits = np.array(valid_inits) # convert to array for logical processing
+inits3 = np.array(inits3) # convert to array for logical processing
+
+# replace inits which failed with max_lp
+max_lp = np.argmax([MAP[i].optimized_params_dict['lp__'] for i in range(chains)])
+inits3[valid_inits == False] = inits2[max_lp]
+
+inits3 = inits3.tolist() # convert back to list
+
 print('Step3: Sampling using MAP estimates from above')
-fit3 = Hybrid_PMF.sample(data=f'{path}/data.json', output_dir=output_dir3,
+fit3 = model.sample(data=f'{path}/data.json', output_dir=output_dir3,
                          inits=inits3, refresh=1, iter_warmup=5000, 
                          iter_sampling=1000, chains=chains, parallel_chains=chains, 
                          threads_per_chain=threads_per_chain, max_treedepth=12)
