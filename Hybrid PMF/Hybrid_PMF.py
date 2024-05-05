@@ -168,7 +168,7 @@ def optimize_chain(output_dir, inits):
     MAP = model.optimize(data=f'{path}/data.json', output_dir=output_dir,
                               inits=inits, iter=10000000, algorithm='lbfgs', 
                               refresh=1000, tol_rel_grad=1e-10, tol_param=1e-20, 
-                              tol_obj=1e-8)
+                              tol_obj=1e-8, show_console=True) # type: ignore
     return MAP
 
 with Pool(chains) as pool:
