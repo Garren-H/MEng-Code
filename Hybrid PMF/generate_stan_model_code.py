@@ -85,7 +85,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
     transformed data {
         real error = 0.01;                      // error in the data (fraction of experimental data)
         vector[sum(N_points)] var_data = square(error*y);    // variance of the data
-        array[2] matrix[N,4] mapping;           // temperature mapping
+        array[2] matrix[sum(N_points),4] mapping;           // temperature mapping
         array[N_known] int N_slice;             // slice indices for parallelization
     '''
     
@@ -98,10 +98,10 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
             N_slice[i] = i;
         }
 
-        mapping[1] = append_col(append_col(append_col(rep_vector(1.0, N), T),
+        mapping[1] = append_col(append_col(append_col(rep_vector(1.0, sum(N_points)), T),
                         1.0 ./ T), log(T));         // mapping for tij
 
-        mapping[2] = append_col(append_col(append_col(rep_vector(0.0, N), rep_vector(1.0, N)),
+        mapping[2] = append_col(append_col(append_col(rep_vector(0.0, sum(N_points)), rep_vector(1.0, sum(N_points))),
                         -1.0 ./ square(T)), 1.0 ./ T);    // mapping for dtij_dT
     }
 
