@@ -138,7 +138,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
 
     transformed data {
         real error = 0.01;                                      // error in the data (fraction of experimental data)
-        vector[sum(N_points)] var_data = square(0.01*y1);       // variance of the data
+        vector[sum(N_points)] var_data = square(error*y1);       // variance of the data
         int M = (N_C + 1) %/% 2;                                // interger division to get the number of U matrices
         int N_MC = N_C*N_T;                                     // overall number of interpolated datapoints per dataset
         array[M-1] int M_slice;                                 // array of integers to be used as indices in parallel computations

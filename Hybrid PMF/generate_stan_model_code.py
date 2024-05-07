@@ -84,7 +84,7 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
 
     transformed data {
         real error = 0.01;                      // error in the data (fraction of experimental data)
-        vector[N] var_data = square(0.01*y);    // variance of the data
+        vector[sum(N_points)] var_data = square(error*y);    // variance of the data
         array[2] matrix[N,4] mapping;           // temperature mapping
         array[N_known] int N_slice;             // slice indices for parallelization
     '''
