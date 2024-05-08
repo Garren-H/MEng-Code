@@ -4,8 +4,7 @@ that the variances are in increasing order for
 the Hybrid model
 '''
 
-def generate_stan_code(D, include_clusters=False, variance_known=False):
-    # D: number of features/lower rank of feature matrices
+def generate_stan_code(include_clusters=False, variance_known=False):
     # include_clusters: whether to include cluster data
     #                 : If true include number of cluster, cluster 
     #                   assignment as a matrix, and the within cluster varaince 
@@ -121,25 +120,9 @@ def generate_stan_code(D, include_clusters=False, variance_known=False):
         array[4] matrix[D,N] V_raw;       // feature matrices V
         real<lower=0, upper=5> scale;     // scale dictating the strenght of ARD effect'''
 
-    # generate different parameters for each ARD variance parameter, and lower bound by previous
+    # ARD variance
     model_code += '''
-        real<lower=0> v_ARD_1;            // ARD variance parameter 1'''
-    for d in range(1,D):
-        model_code += f'''
-        real<lower=v_ARD_{d}> v_ARD_{d+1};      // ARD variance parameter {d+1}'''
-    model_code += '''
-    }
-    '''
-
-    # create transformed parameters block where the ARD varaicnes are combined
-    model_code += '''
-    transformed parameters {'''
-    model_code += f'''
-        vector<lower=0>[D] v_ARD = ['''
-    for d in range(1,D):
-        model_code += f'v_ARD_{d}, '
-    model_code += f"v_ARD_{D}]'; // ARD variance vector"
-    model_code += '''
+        positive_ordered[D] v_ARD;        // ARD variances aranged in increasing order with lower bound zero
     }
     '''
 
