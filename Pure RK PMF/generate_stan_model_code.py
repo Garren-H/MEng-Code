@@ -4,8 +4,7 @@ that the variances are in increasing order for
 the Hybrid model
 '''
 
-def generate_stan_code(D, include_clusters=False, variance_known=False, variance_MC_known=False):
-    # D: number of features/lower rank of feature matrices
+def generate_stan_code(include_clusters=False, variance_known=False, variance_MC_known=False):
     # include_clusters: whether to include cluster data
     #                 : If true include number of cluster, cluster 
     #                   assignment as a matrix, and the within cluster varaince 
@@ -174,7 +173,11 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
         // Assign MC kernel
         K_MC = add_diag(Kernel(x2, x2, T2, T2, order), jitter);
         // Compute inverse using cholesky
-        K_MC_inv = inverse_spd(K_MC);
+        {
+            matrix[N_MC, N_MC] L_MC_inv = inverse(cholesky_decompose(K_MC));
+            K_MC_inv = crossprod(L_MC_inv);         // L_MC_inv' * L_MC_inv
+        }
+
         {
             matrix[N_MC, N_MC] L_MC = cholesky_decompose(K_MC); // Compute cholesky decomposition of K_MC
             matrix[N_MC, N_MC] L_MC_inv = inverse(L_MC);        // Inverse of cholesky decomposition
@@ -208,10 +211,10 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
     if variance_MC_known:
         model_code += '''
             prec_y_MC = add_diag(K_MC_inv, v_MC^-1); // Precision matrix of y_MC
-            prec_y_MC = (prec_y_MC+prec_y_MC')/2; // ensure symmetricness
             // Computation of the mapping of the reconstructed entries to the smoothed values
             {
-               matrix[N_MC, N_MC] prec_y_MC_noisy = K_MC * inverse_spd(add_diag(K_MC, v_MC));
+               matrix[N_MC, N_MC] L_MC_inv = inverse(cholesky_decompose(add_diag(K_MC, v_MC)));
+               matrix[N_MC, N_MC] prec_y_MC_noisy = K_MC * crossprod(L_MC_inv);
                mu_y_MC = prec_y_MC_noisy * add_diag(-prec_y_MC_noisy, 2);
             }'''
     model_code += '''
@@ -244,11 +247,8 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
     model_code += '''
         array[N_T, M] matrix[D,N] U_raw;            // feature matrices U
         array[N_T, M-1] matrix[D,N] V_raw;          // feature matrices V
-        real<lower=0, upper=5> scale;               // scale dictating the strenght of ARD effect'''
-
-    # ARD variance
-    model_code += '''
-        positive_ordered[D] v_ARD;        // ARD variances aranged in increasing order with lower bound zero
+        real<lower=1> scale;                        // scale dictating the strenght of ARD effect
+        vector<lower=0>[D] v_ARD;                   // ARD variances aranged in increasing order with lower bound zero
     }
     '''
 
@@ -258,54 +258,72 @@ def generate_stan_code(D, include_clusters=False, variance_known=False, variance
         model_code += '''
         matrix[N_MC, N_MC] mu_y_MC;                                 // Mapping from reconstructions to smooth MC
         matrix[N_MC, N_MC] prec_y_MC = add_diag(K_MC_inv, v_MC^-1); // Precision matrix of y_MC
-        prec_y_MC = (prec_y_MC+prec_y_MC')/2; // ensure symmetricness
         // Compute mapping from reconstructions to smooothed values
         {
-            matrix[N_MC, N_MC] prec_y_MC_noisy = K_MC * inverse_spd(add_diag(K_MC, v_MC));
+            matrix[N_MC, N_MC] L_MC_inv = inverse(cholesky_decompose(add_diag(K_MC, v_MC)));
+            matrix[N_MC, N_MC] prec_y_MC_noisy = K_MC * crossprod(L_MC_inv);
             mu_y_MC = prec_y_MC_noisy * add_diag(-prec_y_MC_noisy, 2);
         }'''
     model_code += '''
-        // exponential prior on ARD variances
-        v_ARD ~ exponential(scale);
+        // Gamma prior for scale
+        profile("Scale Prior"){
+            scale ~ gamma(1e-9, 1e-9);
+        }
+
+        // Exponential prior on ARD variances
+        profile("ARD Prior"){
+            v_ARD ~ exponential(scale);
+        }
     '''
 
     if not variance_known: # include data-model variance as parameter prior to model
         model_code += '''
-        // exponential prior for variance-model mismatch
-        v ~ exponential(2);
+        // Exponential prior for variance-model mismatch
+        profile("Data-Model Mismatch Prior"){
+            v ~ exponential(2);
+        }
         '''
 
     if not variance_MC_known: # include MC variance as parameter prior to model
         model_code += '''
         // inverse gamma prior for the error between the reconstructions and smoothed values
-        v_MC ~ inv_gamma(2,1);'''
+        profile("Reconstructed-Smoothed error"){
+            v_MC ~ inv_gamma(2,1);
+        }
+        '''
 
     if include_clusters: # include cluster mean priors
         model_code += '''
         // priors for cluster means and feature matrices 
-        for (t in 1:N_T) {
-            target += reduce_sum(ps_feature_matrices, M_slice, grainsize, U_raw_means[t,:],
-                        V_raw_means[t,:], U_raw[t,:M-1], V_raw[t,:M-1], E_cluster, C);
-            to_vector(U_raw_means[t,M,:,:]) ~ std_normal();
-            to_vector(U_raw[t,M,:,:]) ~ normal(to_vector(U_raw_means[t,M,:,:]*C), E_cluster);
+        profile("Cluster Means and Feature Matrices"){
+            for (t in 1:N_T) {
+                target += reduce_sum(ps_feature_matrices, M_slice, grainsize, U_raw_means[t,:],
+                            V_raw_means[t,:], U_raw[t,:M-1], V_raw[t,:M-1], E_cluster, C);
+                to_vector(U_raw_means[t,M,:,:]) ~ std_normal();
+                to_vector(U_raw[t,M,:,:]) ~ normal(to_vector(U_raw_means[t,M,:,:]*C), E_cluster);
+            }
         }
         '''
     else: # exclude cluster parameters 
         model_code += '''
         // priors for feature matrices
-        for (t in 1:N_T) {
-            target += reduce_sum(ps_feature_matrices, M_slice, grainsize, U_raw[t,:M-1], 
-                        V_raw[t,:]);
-            to_vector(U_raw[t,M,:,:]) ~ std_normal();
+        profile("Feature Matrices"){
+            for (t in 1:N_T) {
+                target += reduce_sum(ps_feature_matrices, M_slice, grainsize, U_raw[t,:M-1], 
+                            V_raw[t,:]);
+                to_vector(U_raw[t,M,:,:]) ~ std_normal();
+            }
         }
         '''
 
     model_code += '''
         // Likelihood function
-        target += reduce_sum(ps_like, N_slice, grainsize, y1, cov_f2_f1,
-          mu_y_y_MC, y_MC, mu_y_MC, prec_y_MC, var_data, v,
-          Idx_all, M, N_T, N_MC, N_C, N_known, N_points,
-          v_ARD, U_raw, V_raw);
+        profile("Likelihood"){
+            target += reduce_sum(ps_like, N_slice, grainsize, y1, cov_f2_f1,
+            mu_y_y_MC, y_MC, mu_y_MC, prec_y_MC, var_data, v,
+            Idx_all, M, N_T, N_MC, N_C, N_known, N_points,
+            v_ARD, U_raw, V_raw);
+        }
     }
     '''
 

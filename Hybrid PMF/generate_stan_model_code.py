@@ -46,7 +46,7 @@ def generate_stan_code(include_clusters=False, variance_known=False):
 
                 y_means = NRTL(x[sum(N_points[:i-1])+1:sum(N_points[:i])], 
                                 T[sum(N_points[:i-1])+1:sum(N_points[:i])], 
-                                p12_raw .* scaling, p21_raw .* scaling, a,
+                                p12_raw, p21_raw, a,
                                 mapping[1][sum(N_points[:i-1])+1:sum(N_points[:i]),:],
                                 mapping[2][sum(N_points[:i-1])+1:sum(N_points[:i]),:]);
                 all_target += normal_lpdf(y[sum(N_points[:i-1])+1:sum(N_points[:i])] | y_means, y_std);
@@ -90,7 +90,7 @@ def generate_stan_code(include_clusters=False, variance_known=False):
     
     if include_clusters: # transform cluster variance parameters into a vector for easier processing
         model_code += '''
-        matrix[D, N] E_cluster = rep_matrix(v_cluster', D) * C; // within cluster varaince matrix'''
+        vector[D*N] E_cluster = to_vector(rep_matrix(v_cluster', D) * C); // within cluster variance matrix-flattened to vector'''
 
     model_code += '''
         for (i in 1:N_known) {
@@ -99,9 +99,11 @@ def generate_stan_code(include_clusters=False, variance_known=False):
 
         mapping[1] = append_col(append_col(append_col(rep_vector(1.0, sum(N_points)), T),
                         1.0 ./ T), log(T));         // mapping for tij
+        mapping[1] = mapping[1] .* rep_matrix(scaling', sum(N_points)); // scaling the mapping
 
         mapping[2] = append_col(append_col(append_col(rep_vector(0.0, sum(N_points)), rep_vector(1.0, sum(N_points))),
                         -1.0 ./ square(T)), 1.0 ./ T);    // mapping for dtij_dT
+        mapping[2] = mapping[2] .* rep_matrix(scaling', sum(N_points)); // scaling the mapping
     }
 
     parameters {'''
@@ -118,49 +120,61 @@ def generate_stan_code(include_clusters=False, variance_known=False):
     model_code += '''
         array[4] matrix[D,N] U_raw;       // feature matrices U
         array[4] matrix[D,N] V_raw;       // feature matrices V
-        real<lower=0, upper=5> scale;     // scale dictating the strenght of ARD effect'''
-
-    # ARD variance
-    model_code += '''
-        positive_ordered[D] v_ARD;        // ARD variances aranged in increasing order with lower bound zero
+        real<lower=1> scale;              // scale dictating the strenght of ARD effect
+        vector<lower=0>[D] v_ARD;         // ARD variances aranged in increasing order with lower bound zero
     }
     '''
 
     model_code += '''
     model {
-        // exponential prior
-        v_ARD ~ exponential(scale);
+        // Gamma Prior for scale
+        profile("Scale Prior"){
+            scale ~ gamma(1e-9, 1e-9);
+        }
+
+        // ARD Exponential prior
+        profile("ARD Prior"){
+            v_ARD ~ exponential(scale);
+        }
     '''
 
     if not variance_known: # include data-model variance as parameter prior to model
         model_code += '''
-        // exponential prior for variance-model mismatch
-        v ~ exponential(2);
+        // Exponential prior for variance-model mismatch
+        profile("Data-Model Mismatch Prior"){
+            v ~ exponential(2);
+        }
         '''
 
     if include_clusters: # include cluster mean priors
         model_code += '''
-        // priors for cluster means and feature matrices 
-        for (i in 1:4) {
-            to_vector(U_raw_means[i]) ~ std_normal();
-            to_vector(V_raw_means[i]) ~ std_normal();
-            to_vector(U_raw[i]) ~ normal(to_vector(U_raw_means[i] * C), to_vector(E_cluster));
-            to_vector(V_raw[i]) ~ normal(to_vector(V_raw_means[i] * C), to_vector(E_cluster));
+        // Priors for cluster means and feature matrices 
+        profile("Cluster Mean Feature Matrices"){
+            for (i in 1:4) {
+                to_vector(U_raw_means[i]) ~ std_normal();
+                to_vector(V_raw_means[i]) ~ std_normal();
+                to_vector(U_raw[i]) ~ normal(to_vector(U_raw_means[i] * C), E_cluster);
+                to_vector(V_raw[i]) ~ normal(to_vector(V_raw_means[i] * C), E_cluster);
+            }
         }
         '''
     else: # exclude cluster parameters 
         model_code += '''
-        // priors for feature matrices
-        for (i in 1:4) {
-            to_vector(U_raw[i]) ~ std_normal();
-            to_vector(V_raw[i]) ~ std_normal();
+        // Priors for feature matrices
+        profile("Feature Matrices"){
+            for (i in 1:4) {
+                to_vector(U_raw[i]) ~ std_normal();
+                to_vector(V_raw[i]) ~ std_normal();
+            }
         }
         '''
     model_code += '''
         // Likelihood function
-        target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
-                                V_raw, v_ARD, v, scaling, a, error, N_points,
-                                Idx_known, mapping, var_data);
+        profile("Likelihood"){
+            target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
+                                    V_raw, v_ARD, v, scaling, a, error, N_points,
+                                    Idx_known, mapping, var_data);
+        }
     }
     '''
 
