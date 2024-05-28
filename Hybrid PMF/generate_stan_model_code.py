@@ -120,7 +120,7 @@ def generate_stan_code(include_clusters=False, variance_known=False):
     model_code += '''
         array[4] matrix[D,N] U_raw;       // feature matrices U
         array[4] matrix[D,N] V_raw;       // feature matrices V
-        real<lower=1> scale;              // scale dictating the strenght of ARD effect
+        real<lower=0> scale;              // scale dictating the strenght of ARD effect
         vector<lower=0>[D] v_ARD;         // ARD variances aranged in increasing order with lower bound zero
     }
     '''
@@ -174,6 +174,15 @@ def generate_stan_code(include_clusters=False, variance_known=False):
             target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
                                     V_raw, v_ARD, v, scaling, a, error, N_points,
                                     Idx_known, mapping, var_data);
+        }
+    }
+
+    generated quantities {
+        vector[N_known] log_lik;
+        for (i in 1:N_known) {
+            log_lik[i] = ps_like(N_slice, i, i, y, x, T, U_raw, 
+                                V_raw, v_ARD, v, scaling, a, error, 
+                                N_points, Idx_known, mapping, var_data);
         }
     }
     '''

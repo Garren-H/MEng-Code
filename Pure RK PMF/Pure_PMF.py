@@ -26,6 +26,7 @@ import k_means
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
 variance_MC_known = bool(int(sys.argv[3])) # True if you want to use known variance information for MC
+D = int(sys.argv[4]) # lower rank of feature matrices
 
 # Change this line to match the functional groups to extract
 functional_groups = np.array(['Alkane', 'Primary alcohol'])
@@ -43,8 +44,6 @@ for functional_group in functional_groups:
         path += f'_{functional_group}'
 path += f'/Include_clusters_{include_clusters}/Variance_known_{variance_known}/Variance_MC_known_{variance_MC_known}'
 
-os.makedirs(path)
-
 # Extract data from dataframe
 x = np.concatenate([subset_df['Composition component 1 [mol/mol]'][subset_Indices_T[j,0]:subset_Indices_T[j,1]+1].to_numpy() for j in range(subset_Indices_T.shape[0])])
 T = np.concatenate([subset_df['Temperature [K]'][subset_Indices_T[j,0]:subset_Indices_T[j,1]+1].to_numpy() for j in range(subset_Indices_T.shape[0])])
@@ -53,7 +52,7 @@ N_known = subset_Indices_T.shape[0]
 N_points = subset_Indices_T[:,1] + 1 - subset_Indices_T[:,0]
 grainsize = 1
 N = np.max(Info_Indices['Component names']['Index'])+1
-D = int(N_known/N)
+D = np.min([D, N])
 Idx_known = subset_df.iloc[subset_Indices_T[:,0],7:9].to_numpy()
 Idx_unknown = np.array([[i, j] for i in range(N) for j in range(i+1,N)])
 idx = np.sum(np.char.add(Idx_unknown[:,0].astype(str), Idx_unknown[:,1].astype(str))[:,np.newaxis] ==
@@ -114,15 +113,31 @@ if include_clusters:
     data['C'] = C_best.tolist()
     data['v_cluster'] = [0.1 for _ in range(K_best)] # may need to change
 
+path += f'/rank_{D}'
+
+try:
+    os.makedirs(path)
+
+except:
+    print(f'Folder {path} already exists')
+    print(f'Lower rank of {D} already evaluated for conditions:')
+    print(f'   Include clusters: {include_clusters}')
+    print(f'   Variance known: {variance_known}')
+    print(f'   Variance MC known: {variance_MC_known}')
+    print('Nothing to be done')
+    print('Existing')
+    exit()
+
+
 # save data to json file
 data_file = f'{path}/data.json'
 with open(data_file, 'w') as f:
     json.dump(data, f)
 
 # Get stan code
-stan_code = generate_stan_code(D=D, include_clusters=include_clusters, 
-                               variance_known=variance_known, 
-                               variance_MC_known=variance_MC_known)
+stan_code = generate_stan_code(include_clusters=include_clusters, 
+                            variance_known=variance_known, 
+                            variance_MC_known=variance_MC_known)
 
 with open(f'{path}/Pure_PMF.stan', 'w') as f:
     f.write(stan_code)
@@ -131,99 +146,85 @@ with open(f'{path}/Pure_PMF.stan', 'w') as f:
 model = cmdstanpy.CmdStanModel(stan_file=f'{path}/Pure_PMF.stan', cpp_options={'STAN_THREADS': True})
 
 # set number of chains and threads per chain
-chains = 8
+chains = 4
 threads_per_chain = 4
 
-os.environ['STAN_NUM_THREADS'] = str(threads_per_chain)
+os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 
 # Step 1. Run sampling with random initialzations, but ARD variances initialized
 output_dir1 = f'{path}/Step1'
 os.makedirs(output_dir1)
-inits1 = f'{output_dir1}/inits.json'
-inits = {'v_ARD': np.array([10**(-2*j) for j in range(D)])[::-1].tolist()}
-with open(inits1, 'w') as f:
-    json.dump(inits, f)
 
-print('Step1: Sampling using random initializations')
+print('Step1: Sampling sort chain using random initialization')
+try:
+    fit = model.sample(data=f'{path}/data.json', output_dir=output_dir1,
+                            refresh=100, iter_warmup=100, 
+                            iter_sampling=100, chains=chains, parallel_chains=chains, 
+                            threads_per_chain=threads_per_chain, max_treedepth=5,
+                            metric='dense_e', save_profile=True, sig_figs=18)
+except: # If some chains failed:
+    print('Error in sampling')
+    print('Some chains may have failed')
+    print('Validating the chains individually:')
+    csv_files = [f'{output_dir1}/{f}' for f in os.listdir(output_dir1) if f.endswith('.csv')]
+    failed_idx = []
+    for i in range(chains):
+        try:
+            fit = cmdstanpy.from_csv(csv_files[i])
+        except:
+            failed_idx += [i] 
+    print(f'Failed chains: {failed_idx}')
+    print('Removing failed chains')
+    for idx in failed_idx:
+        os.remove(csv_files[idx])
+    csv_files = [f'{output_dir1}/{f}' for f in os.listdir(output_dir1) if f.endswith('.csv') and not f.endswith('profile.csv')]
+    fit = from_csv(csv_files)
 
-fit1 = model.sample(data=f'{path}/data.json', output_dir=output_dir1, 
-                         chains=chains, parallel_chains=chains,
-                         threads_per_chain=threads_per_chain, refresh=1,
-                         inits=inits1, iter_warmup=5000, iter_sampling=1000)
+    if sum(failed_idx) == 0:
+        print('No chains failed')
+        print('Something may have gone wrong with cmdstanpy post-processing')
+        print('Continuing')
 
-# Step 2. Optimizing each chain using initializations from above
+# extract max_lp samples per chain as above
 output_dir2 = [f'{path}/Step2/{i}' for i in range(chains)]
-for d2 in output_dir2:
-    os.makedirs(d2)
+inits2 = [f'{d}/inits.json' for d in output_dir2]
 
-inits2 = [f'{d2}/inits.json' for d2 in output_dir2]
-max_lp = [np.argmax(fit1.method_variables()['lp__'][:,i]) + 1000*i for i in range(chains)]
+# Correctly get max_lp when some chains failed
+try: # Assign max_lp for each chain if no chains failed
+    max_lp = [np.argmax(fit.method_variables()['lp__'][:,i]) + 1000*i for i in range(chains)]
+except: # Assign failed chains to overall max_lp
+    max_lp = [np.argmax(fit.stan_variables()['lp__'][:,i]) + 1000*i for i in range(len(csv_files))]
+    overall_max_lp = np.argmax(fit.stan_variables()['lp__'].T.flatten())
+    print('Assinging failed chains to overall max_lp')
+    for i in range(chains-len(csv_files)): 
+        max_lp += [overall_max_lp]
 
-dict_keys = list(fit1.stan_variables().keys())
+dict_keys = list(fit.stan_variables().keys())
 
+# save inits
 for i in range(chains):
+    os.makedirs(output_dir2[i])
     init = {}
     for key in dict_keys:
         try:
-            init[key] = fit1.stan_variables()[key][max_lp[i]].tolist()
+            init[key] = fit.stan_variables()[key][max_lp[i]].tolist()
         except:
-            init[key] = fit1.stan_variables()[key][max_lp[i]]
+            init[key] = fit.stan_variables()[key][max_lp[i]]
     with open(inits2[i], 'w') as f:
         json.dump(init, f)
 
-print('Step2: Optimizing each chain using initializations from above')
+# Step 2. Run optimization using initializations given above
+def run_optimization(output_dir, inits):
+    try:
+        fit = model.optimize(data=f'{path}/data.json', inits=inits, output_dir=output_dir, 
+                        save_profile=True, sig_figs=18, algorithm='lbfgs', 
+                        tol_rel_grad=1e-20, show_console=True, jacobian=True,
+                        refresh=100, iter=10000000)
+    except:
+        fit = ['Failed chain']
+    return fit
+
 iters = [[output_dir2[i], inits2[i]] for i in range(chains)]
 
-def optimize_chain(output_dir, inits):
-    MAP = model.optimize(data=f'{path}/data.json', output_dir=output_dir,
-                              inits=inits, iter=10000000, algorithm='lbfgs', 
-                              refresh=100, tol_rel_grad=1e-10, tol_param=1e-20, 
-                              tol_obj=1e-8, show_console=True)
-    return MAP
-
 with Pool(chains) as pool:
-    MAP = pool.starmap(optimize_chain, iters)
-
-# Step 3. Sampling using MAP estimates from above
-
-output_dir3 = f'{path}/Step3'
-os.makedirs(output_dir3)
-inits3 = [f'{output_dir3}/inits_chain{j}.json' for j in range(chains)]
-for i in range(chains):
-    init = {}
-    for key in dict_keys:
-        try:
-            init[key] = MAP[i].stan_variables()[key].tolist()
-        except:
-            init[key] = MAP[i].stan_variables()[key]
-    with open(inits3[i], 'w') as f:
-        json.dump(init, f)
-
-# Some inits are known to make the method fail. We shall hence test
-# which of these inits are causing the method to fail and remove them
-def test_inits(i):
-    try:
-        fit = model.sample(data=f'{path}/data.json',
-                                inits=inits3[i], refresh=1, iter_warmup=10, 
-                                iter_sampling=10, chains=1, parallel_chains=1, 
-                                threads_per_chain=1, max_treedepth=5)
-        return True
-    except:
-        return False
-
-with Pool(chains) as pool:
-    valid_inits = pool.map(test_inits, range(chains))
-valid_inits = np.array(valid_inits) # convert to array for logical processing
-inits3 = np.array(inits3) # convert to array for logical processing
-
-# replace inits which failed with max_lp
-max_lp = np.argmax([MAP[i].optimized_params_dict['lp__'] for i in range(chains)])
-inits3[valid_inits == False] = inits3[max_lp]
-
-inits3 = inits3.tolist() # convert back to list
-
-print('Step3: Sampling using MAP estimates from above')
-fit3 = model.sample(data=f'{path}/data.json', output_dir=output_dir3,
-                         inits=inits3, refresh=1, iter_warmup=5000, 
-                         iter_sampling=1000, chains=chains, parallel_chains=chains, 
-                         threads_per_chain=threads_per_chain, max_treedepth=12)
+    MAP = pool.starmap(run_optimization, iters)
