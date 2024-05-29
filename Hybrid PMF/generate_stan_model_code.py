@@ -110,40 +110,38 @@ def generate_stan_code(include_clusters=False, variance_known=False):
 
     if not variance_known: # include data-model variance as parameter to model
         model_code += '''
-        vector<lower=0>[N_known] v;       // data-model variance'''
+        vector<lower=0>[N_known] v;         // data-model variance'''
 
     if include_clusters: # include cluster means as parameters
         model_code += '''
-        array[4] matrix[D,K] U_raw_means; // U_raw cluster means
-        array[4] matrix[D,K] V_raw_means; // V_raw cluster means'''
+        array[4] matrix[D,K] U_raw_means;   // U_raw cluster means
+        array[4] matrix[D,K] V_raw_means;   // V_raw cluster means'''
 
     model_code += '''
-        array[4] matrix[D,N] U_raw;       // feature matrices U
-        array[4] matrix[D,N] V_raw;       // feature matrices V
-        real<lower=0> scale;              // scale dictating the strenght of ARD effect
-        vector<lower=0>[D] v_ARD;         // ARD variances aranged in increasing order with lower bound zero
+        array[4] matrix[D,N] U_raw;         // feature matrices U
+        array[4] matrix[D,N] V_raw;         // feature matrices V
+        real<lower=0> scale;                // scale dictating the strenght of ARD effect
+        vector<lower=0>[D] v_ARD;           // ARD variances aranged in increasing order with lower bound zero
+    }
+
+    transformed parameters {
+        vector[D] v_ARD_eff = 1e-10 * v_ARD; // effective ARD variances
     }
     '''
 
     model_code += '''
     model {
         // Gamma Prior for scale
-        profile("Scale Prior"){
-            scale ~ gamma(1e-9, 1e-9);
-        }
+        scale ~ gamma(1e-9, 1e-9);
 
         // ARD Exponential prior
-        profile("ARD Prior"){
-            v_ARD ~ exponential(scale);
-        }
+        v_ARD ~ exponential(scale);
     '''
 
     if not variance_known: # include data-model variance as parameter prior to model
         model_code += '''
         // Exponential prior for variance-model mismatch
-        profile("Data-Model Mismatch Prior"){
-            v ~ exponential(2);
-        }
+        v ~ exponential(2);
         '''
 
     if include_clusters: # include cluster mean priors
@@ -161,27 +159,23 @@ def generate_stan_code(include_clusters=False, variance_known=False):
     else: # exclude cluster parameters 
         model_code += '''
         // Priors for feature matrices
-        profile("Feature Matrices"){
-            for (i in 1:4) {
-                to_vector(U_raw[i]) ~ std_normal();
-                to_vector(V_raw[i]) ~ std_normal();
-            }
+        for (i in 1:4) {
+            to_vector(U_raw[i]) ~ std_normal();
+            to_vector(V_raw[i]) ~ std_normal();
         }
         '''
     model_code += '''
         // Likelihood function
-        profile("Likelihood"){
-            target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
-                                    V_raw, v_ARD, v, scaling, a, error, N_points,
-                                    Idx_known, mapping, var_data);
-        }
+        target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
+                                V_raw, v_ARD_eff, v, scaling, a, error, N_points,
+                                Idx_known, mapping, var_data);
     }
 
     generated quantities {
         vector[N_known] log_lik;
         for (i in 1:N_known) {
             log_lik[i] = ps_like(N_slice, i, i, y, x, T, U_raw, 
-                                V_raw, v_ARD, v, scaling, a, error, 
+                                V_raw, v_ARD_eff, v, scaling, a, error, 
                                 N_points, Idx_known, mapping, var_data);
         }
     }
