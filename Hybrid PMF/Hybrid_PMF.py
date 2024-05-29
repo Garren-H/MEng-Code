@@ -30,12 +30,10 @@ functional_groups = np.array(['Alkane', 'Primary alcohol'])
 # get arguments from command line
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
-D = int(sys.argv[3]) # lower rank of feature matrices
 
 print('Evaluating the following conditions for the Hybrid Model:')
 print(f'Include clusters: {include_clusters}')
 print(f'Variance known: {variance_known}')
-print(f'Lower rank of feature matrices: {D}')
 print('\n')
 
 # create file to store stan models and results
@@ -61,17 +59,14 @@ scaling = np.array([1, 1e-3, 1e3, 1])
 grainsize = 1
 a = 0.3
 N = np.max(Info_Indices['Component names']['Index'])+1
-D = int(np.min([D, N]))
+D = N
 Idx_known = subset_df.iloc[subset_Indices_T[:,0],7:9].to_numpy()
-
-path += f'/rank_{D}'
 
 try:
     os.makedirs(path)
 
 except:
     print(f'Folder {path} already exists')
-    print(f'Lower rank of {D} already evaluated for conditions:')
     print(f'   Include clusters: {include_clusters}')
     print(f'   Variance known: {variance_known}')
     print('Nothing to be done')
@@ -134,6 +129,9 @@ if include_clusters:
 with open(f'{path}/data.json', 'w') as f:
     json.dump(data, f)
 
+# clear variables defined earlier
+del data, model_code, x, T, y, Idx_known, v, N_points, subset_df, subset_Indices, subset_Indices_T, Info_Indices, init_indices, init_indices_T
+
 # set number of chains and threads per chain
 chains = 8
 threads_per_chain = 3
@@ -145,16 +143,16 @@ os.makedirs(output_dir1)
 
 print('Step1: Sampling sort chain using random initialization')
 fit = model.sample(data=f'{path}/data.json', output_dir=output_dir1,
-                        refresh=1, iter_warmup=5000, 
+                        refresh=100, iter_warmup=10000, 
                         iter_sampling=1000, chains=chains, parallel_chains=chains, 
                         threads_per_chain=threads_per_chain, max_treedepth=5,
-                        metric='dense_e', save_profile=True, sig_figs=18,
                         show_console=True)
 
 # extract max_lp samples per chain as above
-output_dir2 = f'{path}/Step2'
-os.makedirs(output_dir2)
-inits2 = [f'{output_dir2}/inits_{i}.json' for i in range(chains)]
+output_dir2 = [f'{path}/Step2/{i}' for i in range(chains)]
+for d in output_dir2:
+    os.makedirs(d)
+inits2 = [f'{output_dir2[i]}/inits.json' for i in range(chains)]
 max_lp = [np.argmax(fit.method_variables()['lp__'][:,i]) + 1000*i for i in range(chains)]
 
 dict_keys = list(fit.stan_variables().keys())
@@ -169,37 +167,20 @@ for i in range(chains):
     with open(inits2[i], 'w') as f:
         json.dump(init, f)
 
-print('Step2: Pathfinder using initializations from above')
+# clear variables from memory
+del fit, init
 
-pathfinder = model.pathfinder(data=f'{path}/data.json', output_dir=output_dir2, 
-                        num_paths=chains, max_lbfgs_iters=1000000,
-                        tol_rel_grad=1e-20, refresh=1000,
-                        save_profile=True, sig_figs=18, calculate_lp=True,
-                        psis_resample=False, show_console=True, inits=inits2)
+# Step 2. Run MAP estimation using initializations from sampling
+def get_MAP(i):
+    try:
+        fit = model.optimize(data=f'{path}/data.json', output_dir=output_dir2[i],
+                        inits=inits2[i], show_console=True,  iter=10000000, refresh=1000, 
+                        algorithm='lbfgs', jacobian=True, history_size=20, tol_rel_grad=1e-20)
+    except:
+        fit = None
+    return fit
 
-inits = pathfinder.create_inits(chains=chains)
-
-# Step 3. Optimizing each chain using initializations from above
-output_dir3 = f'{path}/Step3'
-os.makedirs(output_dir3)
-
-inits3 = [f'{output_dir3}/inits_{i}.json' for i in range(chains)]
-
-for i in range(chains):
-    init = {}
-    for key in dict_keys:
-        try:
-            init[key] = inits[i][key].tolist()
-        except:
-            init[key] = inits[i][key]
-    with open(inits3[i], 'w') as f:
-        json.dump(init, f)
-
-print('Step3: Sampling using pathfinder inits')
-fit = model.sample(data=f'{path}/data.json', output_dir=output_dir3,
-                        inits=inits3, refresh=1, iter_warmup=5000, 
-                        iter_sampling=1000, chains=chains, parallel_chains=chains, 
-                        threads_per_chain=threads_per_chain, max_treedepth=12,
-                        metric='dense_e', save_profile=True, sig_figs=18, 
-                        show_console=True)
+print('Step2: MAP estimation using initializations from sampling')
+with Pool(chains) as p:
+    fits = p.map(get_MAP, range(chains))
 
