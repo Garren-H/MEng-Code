@@ -14,6 +14,6 @@ cd Pure\ RK\ PMF
 
 module load app/stan/2.34
 
-python3 Pure_PMF.py ${include_clusters} ${variance_known} ${variance_MC_known} ${rank}
+python3 Pure_PMF.py ${include_clusters} ${variance_known} ${variance_MC_known}
 
-# usage for PBS: qsub -v include_clusters=0,variance_known=1,variance_MC_known=1,rank=1 Pure_PMF.sh
+# usage for PBS: qsub -N Pure_PMF_AP -e Pure_PMF_AP.err -o Pure_PMF_AP.out -v include_clusters=0,variance_known=1,variance_MC_known=1 Pure_PMF.sh

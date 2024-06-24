@@ -46,28 +46,12 @@ for functional_group in functional_groups:
         path += f'{functional_group}'
     else:
         path += f'_{functional_group}'
+data_file = f'{path}/data.json' # file where data is stored
 path += f'/Include_clusters_{include_clusters}/Variance_known_{variance_known}'
 
-# get subset of data to work with
-subset_df, subset_Indices, subset_Indices_T, Info_Indices, init_indices, init_indices_T = subsets(functional_groups).get_subset_df()
-
-# process dataframe to get relevant json files
-x = np.concatenate([subset_df['Composition component 1 [mol/mol]'][subset_Indices_T[j,0]:subset_Indices_T[j,1]+1].to_numpy() for j in range(subset_Indices_T.shape[0])])
-T = np.concatenate([subset_df['Temperature [K]'][subset_Indices_T[j,0]:subset_Indices_T[j,1]+1].to_numpy() for j in range(subset_Indices_T.shape[0])])
-y = np.concatenate([subset_df['Excess Enthalpy [J/mol]'][subset_Indices_T[j,0]:subset_Indices_T[j,1]+1].to_numpy() for j in range(subset_Indices_T.shape[0])])
-N_known = subset_Indices_T.shape[0]
-N_points = subset_Indices_T[:,1] + 1 - subset_Indices_T[:,0]
-scaling = np.array([1, 1e-3, 1e3, 1])
-grainsize = 1
-a = 0.3
-N = np.max(Info_Indices['Component names']['Index'])+1
-D = int(np.min([D, N]))
-Idx_known = subset_df.iloc[subset_Indices_T[:,0],7:9].to_numpy()
-
-path += f'/rank_{D}'
 
 # compile stan code
-model = cmdstanpy.CmdStanModel(stan_file=f'{path}/Hybrid_PMF.stan', cpp_options={'STAN_THREADS': True})
+model = cmdstanpy.CmdStanModel(exe_file=f'/home/ghermanus/lustre/Hybrid PMF/Stan Models/Hybrid_PMF_include_clusters_{include_clusters}_variance_known_{variance_known}')
 
 # set number of chains and threads per chain
 chains = 8

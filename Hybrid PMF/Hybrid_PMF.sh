@@ -20,4 +20,4 @@ python3 Hybrid_PMF.py ${include_clusters} ${variance_known}
 
 source /apps/chpc/chem/anaconda3-2021.11/bin/deactivate
 
-# usage for PBS: qsub -N Hybrid_PMF_1 -e Hybrid_PMF_1.err -o Hybrid_PMF_1.out -v include_clusters=0,variance_known=1 Hybrid_PMF.sh
+# usage for PBS: qsub -N Hybrid_PMF -e Hybrid_PMF.err -o Hybrid_PMF.out -v include_clusters=0,variance_known=1 Hybrid_PMF.sh
