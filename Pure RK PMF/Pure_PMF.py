@@ -107,7 +107,7 @@ def run_optimization(output_dir, inits):
     try:
         fit = model.optimize(data=data_file, inits=inits, output_dir=output_dir, 
                         save_profile=True, sig_figs=18, algorithm='lbfgs', 
-                        tol_rel_grad=1e-20, show_console=True, jacobian=True,
+                        tol_rel_grad=1e-20, show_console=True, jacobian=False, # jacobian=False keep problem as the original model
                         refresh=1000, iter=10000000)
     except:
         fit = ['Failed chain']

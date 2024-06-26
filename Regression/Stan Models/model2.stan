@@ -35,7 +35,7 @@ parameters {
 }
 
 model {
-    vector[4] p12 = p12_raw .* scaling;Update Regression.py
+    vector[4] p12 = p12_raw .* scaling;
     vector[4] p21 = p21_raw .* scaling;
     vector[N_points] y_means = NRTL(x, T, p12, p21, a);
     

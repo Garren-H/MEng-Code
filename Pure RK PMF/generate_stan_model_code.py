@@ -289,11 +289,7 @@ def generate_stan_code(include_clusters=False, variance_known=False, variance_MC
         array[N_T, M] matrix[D,N] U_raw;            // feature matrices U
         array[N_T, M-1] matrix[D,N] V_raw;          // feature matrices V
         real<lower=0, upper=scale_lower> scale;     // scale dictating the strenght of ARD effect
-        vector<lower=0>[D] v_ARD_raw;               // ARD variances on decorrelated prior
-    }
-
-    transformed parameters {
-        vector[D] v_ARD = scale * v_ARD_raw;        // ARD variances
+        vector<lower=0>[D] v_ARD;                   // ARD variances on decorrelated prior
     }
     
     model {'''
@@ -312,7 +308,7 @@ def generate_stan_code(include_clusters=False, variance_known=False, variance_MC
         scale ~ exponential(5);
 
         // Exponential prior on ARD variances
-        v_ARD_raw ~ exponential(1);
+        v_ARD ~ exponential(1/scale);
     '''
 
     if not variance_known: # include data-model variance as parameter prior to model
