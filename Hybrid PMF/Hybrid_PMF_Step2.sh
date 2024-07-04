@@ -16,8 +16,9 @@ source /apps/chpc/chem/anaconda3-2021.11/bin/activate /home/ghermanus/cmdstan_co
 
 cd /home/ghermanus/lustre/Hybrid\ PMF
 
-python3 Hybrid_PMF_Step2.py ${include_clusters} ${variance_known} ${rank}
+python3 Hybrid_PMF_Step2.py ${include_clusters} ${variance_known}
 
 source /apps/chpc/chem/anaconda3-2021.11/bin/deactivate
+conda deactivate
 
-# usage for PBS: qsub -v include_clusters=1,variance_known=1,rank=1 Hybrid_PMF_Step2.sh
+# usage for PBS: qsub -N S_AP -e S_AP.err -o S_AP.out -v include_clusters=0,variance_known=1 Hybrid_PMF_Step2.sh

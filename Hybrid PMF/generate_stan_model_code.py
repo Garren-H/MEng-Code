@@ -205,7 +205,8 @@ def generate_stan_code(include_clusters=False, variance_known=False):
         target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
                                 V_raw, v_ARD, v, scaling, a, error, N_points,
                                 Idx_known, mapping, var_data);'''
-    model_code += '''}
+    model_code += '''
+    }
 
     generated quantities {
         vector[N_known] log_lik;

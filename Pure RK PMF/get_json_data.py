@@ -101,7 +101,7 @@ data = {'N_known': int(N_known),
         'Idx_unknown': (Idx_unknown+1).tolist(),
         'jitter': jitter,
         'v': v.tolist(),
-        'scale_lower': 1e-1}
+        'scale_lower': 1e-2}
 
 data['K'] = int(K_best)
 data['C'] = C_best.tolist()

@@ -85,6 +85,7 @@
         int N_C;                            // number of interpolated compositions
         vector[N_T] T2_int;                 // unique temperatures to interpolate
         vector[N_C] x2_int;                 // unique compositions to interpolate
+        real<lower=0> scale_lower;          // lower bound for scale parameter
         int grainsize;                      // number of grainsizes
 
         int N;                              // number of components
@@ -158,10 +159,10 @@
         real<lower=0, upper=5> v_MC;                // error between of y_MC and (U,V); constrained
         array[N_T, M] matrix[D,N] U_raw;            // feature matrices U
         array[N_T, M-1] matrix[D,N] V_raw;          // feature matrices V
-        real<lower=0> scale;                        // scale dictating the strenght of ARD effect; unconstrained
-        vector<lower=0>[D] v_ARD;                   // ARD variances aranged in increasing order; unconstrained
+        real<lower=0, upper=scale_lower> scale;     // scale dictating the strenght of ARD effect
+        vector<lower=0>[D] v_ARD;                   // ARD variances on decorrelated prior
     }
-
+    
     model {
         // Inverse cholesky factor of MC covariance
         matrix[N_MC, N_MC] L_y_MC_inv_cov = inverse(cholesky_decompose(add_diag(K_MC, v_MC)));
@@ -172,10 +173,10 @@
         target += (N_known + N_unknown) * log_determinant(L_y_MC_inv_cov);
              
         // Gamma prior for scale
-        scale ~ gamma(1e-9, 1e-9);
+        scale ~ exponential(5);
 
         // Exponential prior on ARD variances
-        v_ARD ~ exponential(scale);
+        v_ARD ~ exponential(1/scale);
     
         // Exponential prior for variance-model mismatch
         v ~ exponential(1);

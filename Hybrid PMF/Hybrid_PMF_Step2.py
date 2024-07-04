@@ -12,16 +12,6 @@ import cmdstanpy # type: ignore
 os.environ['TMPDIR'] = old_tmp # change back to old_tmp
 
 import sys
-import pandas as pd # type: ignore
-from multiprocessing import Pool
-
-sys.path.insert(0, '/home/ghermanus/lustre') # include home directory in path to call a python file
-
-# import local function files
-
-from All_code import subsets # python script that extracts data for functional group of interest
-import k_means
-from generate_stan_model_code import generate_stan_code #type: ignore
 
 # Change this line to match the functional groups to extract
 functional_groups = np.array(['Alkane', 'Primary alcohol'])
@@ -30,12 +20,10 @@ functional_groups = np.array(['Alkane', 'Primary alcohol'])
 # get arguments from command line
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
-D = int(sys.argv[3]) # lower rank of feature matrices
 
 print('Evaluating the following conditions for the Hybrid Model:')
 print(f'Include clusters: {include_clusters}')
 print(f'Variance known: {variance_known}')
-print(f'Lower rank of feature matrices: {D}')
 print('\n')
 
 # create file to store stan models and results
@@ -60,37 +48,44 @@ threads_per_chain = 3
 os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 
 # Step 1. Run sampling with random initialzations, but ARD variances initialized
-output_dir1 = f'{path}/Step1'
+output_dir1 = f'{path}/Sampling'
+inits1 = f'{output_dir1}/inits.json'
 
-print('Step1: Pathfinder using random initializations')
+try:
+    os.makedirs(output_dir1)
+except:
+    print(f'Directory {output_dir1} already exists')
 
-csv_files = [f'{output_dir1}/{f}' for f in os.listdir(output_dir1) if f.endswith('.csv') and not f.endswith('-profile.csv')]
+# Obtain inits corresponding to max_lp
 
-pathfinder = cmdstanpy.from_csv(csv_files)
+csv_files = [f'{path}/MAP/{i}/{f}' for i in np.sort(os.listdir(f'{path}/MAP')) for f in os.listdir(f'{path}/MAP/{i}') if f.endswith('.csv')]
 
-inits = pathfinder.create_inits(chains=chains)
+MAP = []
+for csv_file in csv_files:
+    try:
+        MAP += [cmdstanpy.from_csv(csv_file)]
+    except:
+        print(f'Faulty file: {csv_file}')
 
-# Step 2. Optimizing each chain using initializations from above
-output_dir2 = f'{path}/Step2'
+max_lp = np.argmax([map.optimized_params_dict['lp__'] for map in MAP])
+keys = list(MAP[0].stan_variables().keys())
 
-inits2 = [f'{output_dir2}/inits_{i}.json' for i in range(chains)]
+init = {}
+for key in keys:
+    try:
+        init[key] = MAP[max_lp].stan_variables()[key].tolist()
+    except:
+        init[key] = MAP[max_lp].stan_variables()[key]
+with open(inits1, 'w') as f:
+    json.dump(init, f)
 
-dict_keys = list(inits[0].keys())
+# clear memory
+del MAP, csv_files, keys, init, max_lp
 
-for i in range(chains):
-    init = {}
-    for key in dict_keys:
-        try:
-            init[key] = inits[i][key].tolist()
-        except:
-            init[key] = inits[i][key]
-    with open(inits2[i], 'w') as f:
-        json.dump(init, f)
-
-print('Step2: Sampling using pathfinder inits')
-fit = model.sample(data=f'{path}/data.json', output_dir=output_dir2,
-                        inits=inits2, refresh=1, iter_warmup=5000, 
+print('Sampling using MAP inits')
+fit = model.sample(data=data_file, output_dir=output_dir1,
+                        inits=inits1, refresh=10, iter_warmup=5000, 
                         iter_sampling=1000, chains=chains, parallel_chains=chains, 
-                        threads_per_chain=threads_per_chain, max_treedepth=12,
-                        metric='dense_e', save_profile=True, sig_figs=18)
+                        threads_per_chain=threads_per_chain, max_treedepth=10,
+                        metric='diag_e', sig_figs=18)
 

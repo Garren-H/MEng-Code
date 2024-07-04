@@ -58,15 +58,14 @@ model = cmdstanpy.CmdStanModel(exe_file=f'/home/ghermanus/lustre/Hybrid PMF/Stan
 
 # Step 1. Run sampling with random initialzations, but ARD variances initialized
 output_dir1 = f'{path}/Initializations'
-steps = 10
+steps = 5
 num_warmup = 2000
 num_samples = 100
 output_dir1 = [f'{output_dir1}/{i}' for i in range(steps)]
-for d in output_dir1:
-    os.makedirs(d)
 
 print('Step1: Sampling sort chain using random initialization')
 for i in range(steps):
+    os.makedirs(output_dir1[i])
     print(f'Iter {i+1} out of {steps}')
     if i == 0:
         fit = model.sample(data=data_file, output_dir=output_dir1[i],
