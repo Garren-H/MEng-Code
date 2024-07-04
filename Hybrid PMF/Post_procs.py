@@ -35,7 +35,7 @@ class PostProcess:
             else:
                 self.path += f'_{group}'
         self.data_file = f'{self.path}/data.json'
-        self.path += f'Include_clusters_{self.include_clusters}/Variance_known_{self.variance_known}/{self.inf_type}'
+        self.path += f'/Include_clusters_{self.include_clusters}/Variance_known_{self.variance_known}/{self.inf_type}'
     
     def reset_init_path(self, path): # Overwrite init_path if results stored in a different folder
         self.init_path = path
@@ -100,12 +100,12 @@ class PostProcess:
 
             for i in range(len(MAP)):
                 if self.include_clusters:
-                    C = json.load(open(self.data_file, 'r'))['C']
-                    v_cluster = json.load(open(self.data_file, 'r'))['v_cluster']
+                    C = np.array(json.load(open(self.data_file, 'r'))['C'])
                     D = json.load(open(self.data_file, 'r'))['D']
-                    sigma_cluster = (np.ones(D)[:, np.newaxis] * np.sqrt(v_cluster)[np.newaxis,:]) @ C 
-                    U = MAP[i].U_raw @ sigma_cluster[np.newaxis,:,:] + MAP[i].U_raw_means @ C[np.newaxis,:,:]
-                    V = MAP[i].V_raw @ sigma_cluster[np.newaxis,:,:] + MAP[i].V_raw_means @ C[np.newaxis,:,:]
+                    v_cluster = np.array(json.load(open(self.data_file, 'r'))['v_cluster'])
+                    sigma_cluster = (np.sqrt(v_cluster)[np.newaxis,:] * np.ones(D)[:,np.newaxis]) @ C
+                    U = sigma_cluster[np.newaxis,:,:] * MAP[i].U_raw + MAP[i].U_raw_means @ C[np.newaxis,:,:]
+                    V = sigma_cluster[np.newaxis,:,:] * MAP[i].V_raw + MAP[i].V_raw_means @ C[np.newaxis,:,:]
                 
                 else:
                     U = MAP[i].U_raw
@@ -139,11 +139,11 @@ class PostProcess:
 
             D = json.load(open(self.data_file, 'r'))['D']
             if self.include_clusters:
-                C = json.load(open(self.data_file, 'r'))['C']
-                v_cluster = json.load(open(self.data_file, 'r'))['v_cluster']
-                sigma_cluster = (np.ones(D)[:, np.newaxis] * np.sqrt(v_cluster)[np.newaxis,:]) @ C
-                U = fit.U_raw @ sigma_cluster[np.newaxis, np.newaxis,:,:] + fit.U_raw_means @ C[np.newaxis, np.newaxis,:,:]
-                V = fit.V_raw @ sigma_cluster[np.newaxis, np.newaxis,:,:] + fit.V_raw_means @ C[np.newaxis, np.newaxis,:,:]
+                C = np.array(json.load(open(self.data_file, 'r'))['C'])
+                v_cluster = np.array(json.load(open(self.data_file, 'r'))['v_cluster'])
+                sigma_cluster = (np.sqrt(v_cluster)[np.newaxis,:] * np.ones(D)[:,np.newaxis]) @ C
+                U = sigma_cluster[np.newaxis, np.newaxis,:,:] * fit.U_raw + fit.U_raw_means @ C[np.newaxis, np.newaxis,:,:]
+                V = sigma_cluster[np.newaxis, np.newaxis,:,:] * fit.V_raw + fit.V_raw_means @ C[np.newaxis, np.newaxis,:,:]
 
             else:
                 U = fit.U_raw
