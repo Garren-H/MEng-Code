@@ -58,8 +58,24 @@ model = cmdstanpy.CmdStanModel(exe_file=f'/home/ghermanus/lustre/Hybrid PMF/Stan
 output_dir1 = f'{path}/Initializations/{chain_id}'
 output_dir2 = f'{path}/MAP/{chain_id}'
 inits2 = f'{output_dir2}/inits.json'
+
 num_warmup = 1000
 num_samples = 100
+
+# Update initial inits with MAP from previous
+csv_file = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if f.endswith('.csv')][0]
+MAP = cmdstanpy.from_csv(csv_file)
+init = {}
+keys = MAP.stan_variables().keys()
+for key in keys:
+    try:
+        init[key] = MAP.stan_variables()[key].tolist()
+    except:
+        init[key] = MAP.stan_variables()[key]
+with open(inits2, 'w') as f:
+    json.dump(init, f)
+
+del csv_file, MAP, init
 
 e=True
 max_iter=20

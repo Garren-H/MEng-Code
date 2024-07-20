@@ -57,23 +57,46 @@ model = cmdstanpy.CmdStanModel(exe_file=exe_file, cpp_options={'STAN_THREADS': T
 chains = 1
 threads_per_chain = 4
 
+# Total threads for stan to use for parallel computations
 os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 
-
+# Directories to store output
 output_dir1 = f'{path}/Initializations/{chain_id}'
 output_dir2 = f'{path}/MAP/{chain_id}'
+
+# Directory of init file
 inits2 = f'{output_dir2}/inits.json'
+
+# Number of warmup and sampling iterations for initializations
 num_warmup = 1000
 num_samples = 100
 
+# Update initial inits with MAP from previous
+csv_file = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if f.endswith('.csv')][0]
+MAP = cmdstanpy.from_csv(csv_file)
+init = {}
+keys = MAP.stan_variables().keys()
+for key in keys:
+    try:
+        init[key] = MAP.stan_variables()[key].tolist()
+    except:
+        init[key] = MAP.stan_variables()[key]
+with open(inits2, 'w') as f:
+    json.dump(init, f)
+
+del csv_file, MAP, init
+
+# Run sampling and MAP steps
 e=True
 max_iter=20
 iter=0
 while e and iter<max_iter:
+    # Run initial sampling
     fit = model.sample(data=data_file, output_dir=output_dir1,
                         refresh=100, iter_warmup=num_warmup, 
                         iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
                         threads_per_chain=threads_per_chain, max_treedepth=5, inits=inits2)
+    
     #save inits from previous step
     max_lp = np.argmax(fit.method_variables()['lp__'].T.flatten())
     dict_keys = list(fit.stan_variables().keys())
@@ -87,14 +110,16 @@ while e and iter<max_iter:
         json.dump(init, f)
     del fit, init
 
-    try:
+    try: # Run MAP step and break loop if successful
+        # get all files in directory before running MAP (exluding json files)
         prev_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
         MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=1000000, refresh=1000, 
                         algorithm='lbfgs', jacobian=False, tol_rel_grad=1e-20, tol_rel_obj=1e-20)
         e=False
+        # remove all files in directory before running MAP (exluding json files)
         for f in prev_files:
             os.remove(f)
-    except:
+    except: # Remove all files in directory if MAP fails
         delete_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
         for f in delete_files:
             os.remove(f)
