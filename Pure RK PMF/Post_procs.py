@@ -86,7 +86,7 @@ class PostProcess:
 
         x = data['Composition component 1 [mol/mol]'].to_numpy().astype(float)
         T = data['Temperature [K]'].to_numpy().astype(float)
-        y_exp = data['Excess Enthalpy [J/kmol]'].to_numpy().astype(float)
+        y_exp = data['Excess Enthalpy [J/mol]'].to_numpy().astype(float)
         y_UNIFAC = data['UNIFAC_DMD [J/mol]'].to_numpy().astype(float)
         c1 = data['Component 1'].to_numpy().astype(str)
         c2 = data['Component 2'].to_numpy().astype(str)

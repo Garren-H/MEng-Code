@@ -17,7 +17,7 @@ source /apps/chpc/chem/anaconda3-2021.11/bin/activate /home/ghermanus/cmdstan_co
 
 cd /home/ghermanus/lustre/Hybrid\ PMF
 
-python3 Hybrid_PMF.py ${include_clusters} ${variance_known} "${func_groups_string}" $chain_id
+python3 Hybrid_PMF_more_inits.py ${include_clusters} ${variance_known} "${func_groups_string}" $chain_id
 
 conda deactivate
 

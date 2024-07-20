@@ -62,8 +62,7 @@ os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 
 output_dir1 = f'{path}/Initializations/{chain_id}'
 output_dir2 = f'{path}/MAP/{chain_id}'
-os.makedirs(output_dir1)
-os.makedirs(output_dir2)
+inits2 = f'{output_dir2}/inits.json'
 num_warmup = 1000
 num_samples = 100
 
@@ -71,16 +70,10 @@ e=True
 max_iter=20
 iter=0
 while e and iter<max_iter:
-    if iter == 0:
-        fit = model.sample(data=data_file, output_dir=output_dir1,
-                            refresh=100, iter_warmup=num_warmup, 
-                            iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
-                            threads_per_chain=threads_per_chain, max_treedepth=5)
-    else:
-        fit = model.sample(data=data_file, output_dir=output_dir1,
-                            refresh=100, iter_warmup=num_warmup, 
-                            iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
-                            threads_per_chain=threads_per_chain, max_treedepth=5, inits=inits2)
+    fit = model.sample(data=data_file, output_dir=output_dir1,
+                        refresh=100, iter_warmup=num_warmup, 
+                        iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
+                        threads_per_chain=threads_per_chain, max_treedepth=5, inits=inits2)
     #save inits from previous step
     max_lp = np.argmax(fit.method_variables()['lp__'].T.flatten())
     dict_keys = list(fit.stan_variables().keys())
@@ -90,15 +83,17 @@ while e and iter<max_iter:
             init[key] = fit.stan_variables()[key][max_lp].tolist()
         except:
             init[key] = fit.stan_variables()[key][max_lp]
-    inits2 = f'{output_dir2}/inits.json'
     with open(inits2, 'w') as f:
         json.dump(init, f)
     del fit, init
 
     try:
-        MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=400000, refresh=1000, 
+        prev_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
+        MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=1000000, refresh=1000, 
                         algorithm='lbfgs', jacobian=False, tol_rel_grad=1e-20, tol_rel_obj=1e-20)
         e=False
+        for f in prev_files:
+            os.remove(f)
     except:
         delete_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
         for f in delete_files:

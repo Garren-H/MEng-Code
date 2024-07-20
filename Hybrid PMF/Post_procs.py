@@ -15,6 +15,11 @@ import json
 
 from All_code import subsets
 
+import matplotlib.pyplot as plt
+from IPython.display import clear_output
+from matplotlib.lines import Line2D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
 class PostProcess:
     def __init__(self, functional_groups, include_clusters, variance_known, inf_type):
         self.functional_groups = functional_groups
@@ -96,26 +101,25 @@ class PostProcess:
                     print(f'Faulty csv file: {file}')
                     print('Skipping...')
             
-            A = []
+            # Extract max lp
+            max_lp = np.argmax([map.optimized_params_dict['lp__'] for map in MAP])
+            MAP = MAP[max_lp]
 
-            for i in range(len(MAP)):
-                if self.include_clusters:
-                    C = np.array(json.load(open(self.data_file, 'r'))['C'])
-                    D = json.load(open(self.data_file, 'r'))['D']
-                    v_cluster = np.array(json.load(open(self.data_file, 'r'))['v_cluster'])
-                    sigma_cluster = (np.sqrt(v_cluster)[np.newaxis,:] * np.ones(D)[:,np.newaxis]) @ C
-                    U = sigma_cluster[np.newaxis,:,:] * MAP[i].U_raw + MAP[i].U_raw_means @ C[np.newaxis,:,:]
-                    V = sigma_cluster[np.newaxis,:,:] * MAP[i].V_raw + MAP[i].V_raw_means @ C[np.newaxis,:,:]
-                
-                else:
-                    U = MAP[i].U_raw
-                    V = MAP[i].V_raw
-
-                v_ARD = np.diag(MAP[i].v_ARD)[np.newaxis, :, :]
-
-                A += [U.transpose(0, 2, 1) @ v_ARD @ V]
+            if self.include_clusters:
+                C = np.array(json.load(open(self.data_file, 'r'))['C'])
+                D = json.load(open(self.data_file, 'r'))['D']
+                v_cluster = np.array(json.load(open(self.data_file, 'r'))['v_cluster'])
+                sigma_cluster = (np.sqrt(v_cluster)[np.newaxis,:] * np.ones(D)[:,np.newaxis]) @ C
+                U = sigma_cluster[np.newaxis,:,:] * MAP.U_raw + MAP.U_raw_means @ C[np.newaxis,:,:]
+                V = sigma_cluster[np.newaxis,:,:] * MAP.V_raw + MAP.V_raw_means @ C[np.newaxis,:,:]
             
-            A = np.array(A)
+            else:
+                U = MAP.U_raw
+                V = MAP.V_raw
+
+            v_ARD = np.diag(MAP.v_ARD)[np.newaxis, :, :]
+
+            A = U.transpose(0, 2, 1) @ v_ARD @ V
 
         elif self.inf_type == 'Sampling':
             # get csv_files
@@ -166,7 +170,7 @@ class PostProcess:
 
         x = data['Composition component 1 [mol/mol]'].to_numpy().astype(float)
         T = data['Temperature [K]'].to_numpy().astype(float)
-        y_exp = data['Excess Enthalpy [J/kmol]'].to_numpy().astype(float)
+        y_exp = data['Excess Enthalpy [J/mol]'].to_numpy().astype(float)
         y_UNIFAC = data['UNIFAC_DMD [J/mol]'].to_numpy().astype(float)
         c1 = data['Component 1'].to_numpy().astype(str)
         c2 = data['Component 2'].to_numpy().astype(str)
@@ -213,8 +217,13 @@ class PostProcess:
             mix1 = c_all[testing_indices[i,0]] + ' + ' + c_all[testing_indices[i,1]]
             idx = mix_all == mix1
 
-            p12 = A[:, :, testing_indices[i,0], testing_indices[i,1]] * scaling[np.newaxis, :]
-            p21 = A[:, :, testing_indices[i,1], testing_indices[i,0]] * scaling[np.newaxis, :]
+            if self.inf_type == 'MAP':
+                p12 = A[:, testing_indices[i,0], testing_indices[i,1]] * scaling
+                p21 = A[:, testing_indices[i,1], testing_indices[i,0]] * scaling
+
+            elif self.inf_type == 'Sampling':
+                p12 = A[:, :, testing_indices[i,0], testing_indices[i,1]] * scaling[np.newaxis, :]
+                p21 = A[:, :, testing_indices[i,1], testing_indices[i,0]] * scaling[np.newaxis, :]
 
             y_MC += [self.excess_enthalpy_predictions(x=data_dict['x'][idx], 
                                                       T=data_dict['T'][idx], 
@@ -266,3 +275,155 @@ class PostProcess:
                     'y_rec': y_rec}
         
         return rec_dict
+    
+    def compute_error_metrics(self, data_dict=None):
+        if data_dict == None:
+            # Default to testing data
+            data_dict = self.get_MC()
+
+        y_exp = data_dict['y_exp']
+        y_UNIFAC = data_dict['y_UNIFAC']
+        if self.inf_type == 'Sampling':
+            y_MC = np.mean(data_dict['y_MC'], axis=1)
+        elif self.inf_type == 'MAP':
+            y_MC = data_dict['y_MC']
+
+        mix_all = np.char.add(np.char.add(data_dict['c1'], ' + '), data_dict['c2'])
+        unique_mix, idx = np.unique(mix_all, return_index=True)
+        unique_mix = unique_mix[np.argsort(idx)]
+
+        err_dict = {('Component 1', ''): [],
+                    ('Component 2', ''): [],
+                    ('UNIFAC', 'MAE'): [],
+                    ('UNIFAC', 'RMSE'): [],
+                    ('MC', 'MAE'): [],
+                    ('MC', 'RMSE'): []}
+
+        for j in range(len(unique_mix)):
+            idx = mix_all == unique_mix[j]
+            err_dict['Component 1', ''] += [data_dict['c1'][idx][0]]
+            err_dict['Component 2', ''] += [data_dict['c2'][idx][0]]
+            err_dict['UNIFAC', 'MAE'] += [np.mean(np.abs(y_exp[idx] - y_UNIFAC[idx]))]
+            err_dict['MC', 'MAE'] += [np.mean(np.abs(y_exp[idx] - y_MC[idx]))]
+            err_dict['UNIFAC', 'RMSE'] += [np.sqrt(np.mean((y_exp[idx] - y_UNIFAC[idx])**2))]
+            err_dict['MC', 'RMSE'] += [np.sqrt(np.mean((y_exp[idx] - y_MC[idx])**2))]
+
+        err_dict['Component 1', ''] += ['Overall']
+        err_dict['Component 2', ''] += ['']
+        err_dict['UNIFAC', 'MAE'] += [np.mean(np.abs(y_exp - y_UNIFAC))]
+        err_dict['MC', 'MAE'] += [np.mean(np.abs(y_exp - y_MC))]
+        err_dict['UNIFAC', 'RMSE'] += [np.sqrt(np.mean((y_exp - y_UNIFAC)**2))]
+        err_dict['MC', 'RMSE'] += [np.sqrt(np.mean((y_exp - y_MC)**2))]
+
+        return err_dict
+
+    def plot_2D_pred(self):
+        plots_2D = f'{self.path}/2D_plots'
+        if not os.path.exists(plots_2D):
+            os.makedirs(plots_2D)
+
+        y_pred = self.get_MC()
+        
+        all_mix = np.char.add(np.char.add(y_pred['c1'].astype(str), ' + '), y_pred['c2'].astype(str))
+        unique_mix, idx = np.unique(all_mix, return_index=True)
+        unique_mix = unique_mix[np.argsort(idx)]
+        idx = np.sort(idx)
+        idx = np.append(idx, len(y_pred['y_exp']))
+
+        for j in range(len(unique_mix)):
+            yy = y_pred['y_exp'][idx[j]:idx[j+1]]
+            yy_UNIFAC = y_pred['y_UNIFAC'][idx[j]:idx[j+1]]
+            yy_MC = y_pred['y_MC'][idx[j]:idx[j+1],:]
+            yy_MC_mean = np.mean(yy_MC, axis=1)
+            yy_MC_0025 = np.quantile(yy_MC, 0.025, axis=1)
+            yy_MC_0975 = np.quantile(yy_MC, 0.975, axis=1)
+            xx = y_pred['x'][idx[j]:idx[j+1]]
+            TT = y_pred['T'][idx[j]:idx[j+1]]
+            c1 = y_pred['c1'][idx[j]]
+            c2 = y_pred['c2'][idx[j]]
+            T_uniq = np.unique(TT)
+            for i in range(len(T_uniq)):
+                T_idx = TT == T_uniq[i]
+                idx_sort = np.argsort(xx[T_idx])
+                fig, ax = plt.subplots()
+                ax.plot(xx[T_idx][idx_sort], yy[T_idx][idx_sort], '.k', label='Experimental Data')
+                ax.plot(xx[T_idx][idx_sort], yy_UNIFAC[T_idx][idx_sort], '.g', label='UNIFAC')
+                ax.plot(xx[T_idx][idx_sort], yy_MC_mean[T_idx][idx_sort], '.b', label='Mean MC')
+                ax.fill_between(xx[T_idx][idx_sort], yy_MC_0025[T_idx][idx_sort], yy_MC_0975[T_idx][idx_sort], color='b', alpha=0.5, label='95% CI MC')
+
+                ax.set_xlabel('Composition of Compound 1 [mol/mol]')
+                ax.set_ylabel('Excess Enthalpy [J/mol]')
+                ax.set_title(f'(1) {c1} + (2) {c2} at {T_uniq[i]:.2f} K')
+                ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+                plt.tight_layout()
+
+                fig.savefig(f'{plots_2D}/{j}_{i}.png', dpi=300)
+                plt.close(fig)
+                clear_output(wait=False)
+
+    def plot_3D_pred(self):
+        plots_3D = f'{self.path}/3D_plots'
+        if not os.path.exists(plots_3D):
+            os.makedirs(plots_3D)
+
+        y_pred = self.get_MC()
+        
+        all_mix = np.char.add(np.char.add(y_pred['c1'].astype(str), ' + '), y_pred['c2'].astype(str))
+        unique_mix, idx = np.unique(all_mix, return_index=True)
+        unique_mix = unique_mix[np.argsort(idx)]
+        idx = np.sort(idx)
+        idx = np.append(idx, len(y_pred['y_exp']))
+
+        for j in range(len(unique_mix)):
+            fig = plt.figure(figsize=(10, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            yy = y_pred['y_exp'][idx[j]:idx[j+1]]
+            yy_UNIFAC = y_pred['y_UNIFAC'][idx[j]:idx[j+1]]
+            yy_MC = y_pred['y_MC'][idx[j]:idx[j+1],:]
+            yy_MC_mean = np.mean(yy_MC, axis=1)
+            yy_MC_0025 = np.quantile(yy_MC, 0.025, axis=1)
+            yy_MC_0975 = np.quantile(yy_MC, 0.975, axis=1)
+            xx = y_pred['x'][idx[j]:idx[j+1]]
+            TT = y_pred['T'][idx[j]:idx[j+1]]
+            c1 = y_pred['c1'][idx[j]]
+            c2 = y_pred['c2'][idx[j]]
+            T_uniq = np.unique(TT)
+            for i in range(len(T_uniq)):
+                # Plot median prediction
+                T_idx = TT == T_uniq[i]
+                idx_sort = np.argsort(xx[T_idx])
+                if j == 0:
+                    ax.scatter(xx[T_idx][idx_sort], TT[T_idx][idx_sort], yy_MC_mean[T_idx][idx_sort], c='b', marker='.', s=100, label='Mean MC')
+                else:
+                    ax.scatter(xx[T_idx][idx_sort], TT[T_idx][idx_sort], yy_MC_mean[T_idx][idx_sort], c='b', marker='.', s=100)
+                
+                # Create polygons for CI bounds
+                verts = [list(zip(xx[T_idx][idx_sort], TT[T_idx][idx_sort], yy_MC_0025[T_idx][idx_sort])) + list(zip(xx[T_idx][idx_sort], TT[T_idx][idx_sort], yy_MC_0975[T_idx][idx_sort]))[::-1]]
+                poly = Poly3DCollection(verts, facecolors='b', alpha=0.5)
+                ax.add_collection3d(poly)
+
+            # Scatter plot for experimental data
+            ax.scatter(xx, TT, yy, c='k', marker='.', s=100, label='Experimental Data')
+            ax.scatter(xx, TT, yy_UNIFAC, c='g', marker='.', s=100, label='UNIFAC')
+
+            # Custom legend
+            custom_lines = [
+                Line2D([0], [0], color='b', lw=4),  # Median prediction
+                Line2D([0], [0], color='b', lw=4, alpha=0.5),  # 95% CI Bounds
+                Line2D([0], [0], color='k', marker='.', linestyle='None', markersize=10),  # Experimental Data
+                Line2D([0], [0], color='g', marker='.', linestyle='None', markersize=10)  # UNIFAC
+            ]
+            ax.legend(custom_lines, ['Mean MC', '95% CI MC', 'Experimental Data', 'UNIFAC'], loc='upper left', bbox_to_anchor=(1.03, 1))
+
+            ax.set_xlabel('Composition of component 1 [mol//mol]', fontsize=14)
+            ax.set_ylabel('Temperature [K]', fontsize=14)
+            ax.set_zlabel('Excess Enthalpy [J/mol]', fontsize=14, labelpad=10)
+            ax.set_title(f'(1) {c1} + (2) {c2}', fontsize=20)
+            plt.tight_layout()  # Adjust layout to make room for the legend
+
+            plt.savefig(f'{plots_3D}/{j}.png', dpi=300)
+
+            plt.close(fig)
+            clear_output(wait=False)
+
+
