@@ -31,9 +31,9 @@ class PostProcess:
             else:
                 self.path += '_' + group
         self.data_file = f'{self.path}/data.json' # json data file
-        self.path += f'/Include_clusters_{include_clusters}/Variance_known_{variance_known}/Variance_MC_known_{variance_MC_known}/Step2' # path to stan csv files
+        self.path += f'/Include_clusters_{include_clusters}/Variance_known_{variance_known}/Variance_MC_known_{variance_MC_known}/MAP' # path to stan csv files
         # Redlich-Kister polynomial order
-        self.order = 3
+        self.order = json.load(open(self.data_file, 'r'))['order']
         # temperature kernel
         self.KT = lambda T1, T2: np.column_stack([np.ones_like(T1), T1**2, 1e-3 * T1 **3]) @ np.column_stack([np.ones_like(T2), T2**2, 1e-3 * T2 **3]).T
         # Composition kernel
@@ -43,7 +43,13 @@ class PostProcess:
         # Combined kernel
         self.K = lambda x1, x2, T1, T2: self.KT(T1, T2) * self.Kx(x1, x2)
 
-    def get_interps(self, Idx):
+    def get_interps(self, Idx=None):
+        if Idx is None: # default to all interps
+            Idx_known = np.array(json.load(open(self.data_file, 'r'))['Idx_known'])-1
+            Idx_unknown = np.array(json.load(open(self.data_file, 'r'))['Idx_unknown'])-1 
+            Idx = np.concatenate([Idx_known, Idx_unknown], axis=0)
+            del Idx_known, Idx_unknown
+        
         csv_files = [f'{self.path}/{i}/{f}' for i in range(len(os.listdir(self.path))) for f in os.listdir(f'{self.path}/{i}') if f.endswith('.csv')]
         MAP = []
         for file in csv_files:
@@ -129,10 +135,10 @@ class PostProcess:
             
             for j in range(a_rec_testing.shape[0]):
                 try:
-                    L_inv_T = np.linalg.inv(np.linalg.cholesky(K_interp+v_MC[j]*np.eye(K_interp.shape[0]))).T
+                    cov_interp_inv = np.linalg.inv(K_interp+v_MC[j]*np.eye(K_interp.shape[0])).T
                 except:
-                    L_inv_T = np.linalg.inv(np.linalg.cholesky(K_interp+v_MC*np.eye(K_interp.shape[0]))).T
-                yy_MC += [K_test_interp @ (L_inv_T@L_inv_T.T) @a_rec_testing[j,:,i]]
+                    cov_interp_inv = np.linalg.inv(K_interp+v_MC*np.eye(K_interp.shape[0])).T
+                yy_MC += [K_test_interp @ cov_interp_inv @ a_rec_testing[j,:,i]]
             
             yy_MC = np.stack(yy_MC, axis=0)
             y_MC += [yy_MC]
@@ -188,3 +194,41 @@ class PostProcess:
         data_dict['y_MC'] = np.concatenate(y_MC, axis=1).T
 
         return data_dict
+    
+    def compute_error_metrics(self, data_dict=None):
+        if data_dict == None:
+            # Default to testing data
+            data_dict = self.compute_testing_error()
+
+        y_exp = data_dict['y_exp']
+        y_UNIFAC = data_dict['y_UNIFAC']
+        y_MC = data_dict['y_MC']
+
+        mix_all = np.char.add(np.char.add(data_dict['c1'], ' + '), data_dict['c2'])
+        unique_mix, idx = np.unique(mix_all, return_index=True)
+        unique_mix = unique_mix[np.argsort(idx)]
+
+        err_dict = {('Component 1', ''): [],
+                    ('Component 2', ''): [],
+                    ('UNIFAC', 'MAE'): [],
+                    ('UNIFAC', 'RMSE'): [],
+                    ('MC', 'MAE'): [],
+                    ('MC', 'RMSE'): []}
+
+        for j in range(len(unique_mix)):
+            idx = mix_all == unique_mix[j]
+            err_dict['Component 1', ''] += [data_dict['c1'][idx][0]]
+            err_dict['Component 2', ''] += [data_dict['c2'][idx][0]]
+            err_dict['UNIFAC', 'MAE'] += [np.mean(np.abs(y_exp[idx] - y_UNIFAC[idx]))]
+            err_dict['MC', 'MAE'] += [np.mean(np.abs(y_exp[idx] - y_MC[idx]))]
+            err_dict['UNIFAC', 'RMSE'] += [np.sqrt(np.mean((y_exp[idx] - y_UNIFAC[idx])**2))]
+            err_dict['MC', 'RMSE'] += [np.sqrt(np.mean((y_exp[idx] - y_MC[idx])**2))]
+
+        err_dict['Component 1', ''] += ['Overall']
+        err_dict['Component 2', ''] += ['']
+        err_dict['UNIFAC', 'MAE'] += [np.mean(np.abs(y_exp - y_UNIFAC))]
+        err_dict['MC', 'MAE'] += [np.mean(np.abs(y_exp - y_MC))]
+        err_dict['UNIFAC', 'RMSE'] += [np.sqrt(np.mean((y_exp - y_UNIFAC)**2))]
+        err_dict['MC', 'RMSE'] += [np.sqrt(np.mean((y_exp - y_MC)**2))]
+
+        return err_dict

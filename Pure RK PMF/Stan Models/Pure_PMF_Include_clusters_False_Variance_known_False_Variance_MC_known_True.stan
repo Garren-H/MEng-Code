@@ -78,7 +78,7 @@
         int N_C;                            // number of interpolated compositions
         vector[N_T] T2_int;                 // unique temperatures to interpolate
         vector[N_C] x2_int;                 // unique compositions to interpolate
-        real<lower=0> scale_lower;          // lower bound for scale parameter
+        real<lower=0> scale_upper;          // upper bound for scale parameter
         real<lower=0> v_MC;                 // error between of y_MC and (U,V)
         int grainsize;                      // number of grainsizes
 
@@ -164,16 +164,16 @@
         vector<lower=0, upper=5>[N_known] v;        // data-model variance; constrained
         array[N_T, M] matrix[D,N] U_raw;            // feature matrices U
         array[N_T, M-1] matrix[D,N] V_raw;          // feature matrices V
-        real<lower=0, upper=scale_lower> scale;     // scale dictating the strenght of ARD effect
-        vector<lower=0>[D] v_ARD;                   // ARD variances on decorrelated prior
+        vector<lower=0>[D] sigma_ARD;               // ARD variances on decorrelated prior
+    }
+
+    transformed parameters {
+        vector[D] v_ARD = (scale_upper * sigma_ARD) .^ 2; // effective ARD variances; sqrt(v_ARD) ~ half-cauchy(0, scale_upper)
     }
     
     model {     
-        // Gamma prior for scale
-        scale ~ exponential(5);
-
-        // Exponential prior on ARD variances
-        v_ARD ~ exponential(1/scale);
+        // half-cauhcy prior for standard deviation of the feature matrices
+        sigma_ARD ~ cauchy(0, 1);
     
         // Exponential prior for variance-model mismatch
         v ~ exponential(1);
