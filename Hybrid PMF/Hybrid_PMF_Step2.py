@@ -77,11 +77,14 @@ for map in MAP:
     try:
         lp += [map.optimized_params_dict['lp__']]
     except:
-        lp += [model.log_prob(data=data_file, params=map)]
+        lp += [model.log_prob(data=data_file, params=map).iloc[0,0]]
 
 max_lp = np.argmax(lp)
 
-keys = list(MAP[0].stan_variables().keys())
+try:
+    keys = list(MAP[0].stan_variables().keys())
+except:
+    keys = list(json.load(open(MAP[0], 'r')).keys())
 
 init = {}
 for key in keys:
@@ -92,9 +95,9 @@ for key in keys:
             init[key] = MAP[max_lp].stan_variables()[key]
         except:
             try:
-                init[key] = MAP[max_lp][key].tolist()
+                init[key] = json.load(open(MAP[max_lp],'r'))[key].tolist()
             except:
-                init[key] = MAP[max_lp][key]
+                init[key] = json.load(open(MAP[max_lp],'r'))[key]
 with open(inits1, 'w') as f:
     json.dump(init, f)
 
