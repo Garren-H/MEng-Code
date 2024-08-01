@@ -13,13 +13,11 @@ os.environ['TMPDIR'] = old_tmp # change back to old_tmp
 
 import sys
 
-# Change this line to match the functional groups to extract
-functional_groups = np.array(['Alkane', 'Primary alcohol'])
-
-
 # get arguments from command line
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
+func_groups_string = sys.argv[3] # functional groups to extract
+functional_groups = func_groups_string.split(',') # restructure to numpy array 
 
 print('Evaluating the following conditions for the Hybrid Model:')
 print(f'Include clusters: {include_clusters}')
@@ -39,11 +37,11 @@ path += f'/Include_clusters_{include_clusters}/Variance_known_{variance_known}'
 
 
 # compile stan code
-model = cmdstanpy.CmdStanModel(exe_file=f'/home/ghermanus/lustre/Hybrid PMF/Stan Models/Hybrid_PMF_include_clusters_{include_clusters}_variance_known_{variance_known}')
+model = cmdstanpy.CmdStanModel(exe_file=f'/home/ghermanus/lustre/Hybrid PMF/Stan Models/Hybrid_PMF_include_clusters_{include_clusters}_variance_known_{variance_known}', cpp_options={'STAN_THREADS': True})
 
 # set number of chains and threads per chain
-chains = 8
-threads_per_chain = 3
+chains = 5
+threads_per_chain = 4
 
 os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 
@@ -57,17 +55,29 @@ except:
     print(f'Directory {output_dir1} already exists')
 
 # Obtain inits corresponding to max_lp
-
-csv_files = [f'{path}/MAP/{i}/{f}' for i in np.sort(os.listdir(f'{path}/MAP')) for f in os.listdir(f'{path}/MAP/{i}') if f.endswith('.csv')]
+csv_files = [f'{path}/MAP/{i}' for i in range(5)]
 
 MAP = []
-for csv_file in csv_files:
+for i in range(len(csv_files)):
     try:
+        csv_file = f'{csv_files[i]}/{[f for f in os.listdir(csv_files[i]) if f.endswith('.csv')][0]}'
         MAP += [cmdstanpy.from_csv(csv_file)]
     except:
-        print(f'Faulty file: {csv_file}')
+        try: 
+            MAP += [f'{csv_files[i]}/inits.json']
+        except:
+            print(f'Faulty csv and json file in {csv_files[i]}')
+    del csv_file
+    
+lp = []
+for map in MAP:
+    try:
+        lp += [map.optimized_params_dict['lp__']]
+    except:
+        lp += [model.log_prob(data=data_file, params=map)]
 
-max_lp = np.argmax([map.optimized_params_dict['lp__'] for map in MAP])
+max_lp = np.argmax(lp)
+
 keys = list(MAP[0].stan_variables().keys())
 
 init = {}
@@ -75,7 +85,13 @@ for key in keys:
     try:
         init[key] = MAP[max_lp].stan_variables()[key].tolist()
     except:
-        init[key] = MAP[max_lp].stan_variables()[key]
+        try:
+            init[key] = MAP[max_lp].stan_variables()[key]
+        except:
+            try:
+                init[key] = MAP[max_lp][key].tolist()
+            except:
+                init[key] = MAP[max_lp][key]
 with open(inits1, 'w') as f:
     json.dump(init, f)
 
