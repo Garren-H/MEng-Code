@@ -67,7 +67,10 @@ for i in range(len(csv_files)):
             MAP += [f'{csv_files[i]}/inits.json']
         except:
             print(f'Faulty csv and json file in {csv_files[i]}')
-    del csv_file
+    try:
+        del csv_file
+    except:
+        print('')
 
 lp = []
 for map in MAP:
