@@ -55,7 +55,7 @@ except:
     print(f'Directory {output_dir1} already exists')
 
 # Obtain inits corresponding to max_lp
-csv_files = [f'{path}/MAP/{i}' for i in range(5)]
+csv_files = [f'{path}/MAP/{i}' for i in np.sort(os.listdir(f'{path}/MAP')) if i.isdigit()]
 
 MAP = []
 for i in range(len(csv_files)):
@@ -68,7 +68,7 @@ for i in range(len(csv_files)):
         except:
             print(f'Faulty csv and json file in {csv_files[i]}')
     del csv_file
-    
+
 lp = []
 for map in MAP:
     try:
