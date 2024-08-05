@@ -29,6 +29,8 @@ class PostProcess:
         self.testing_excel = '/home/garren/Documents/MEng/Code/Latest_results/HPC Files/TestingData_Final.xlsx' # Path to testing data file
         self.training_excel = '/home/garren/Documents/MEng/Code/Latest_results/HPC Files/Sorted Data.xlsx' # Path to training data file
 
+        self.model = cmdstanpy.CmdStanModel(exe_file=f'/home/garren/HPC Files/Hybrid PMF/Stan Models/Hybrid_PMF_include_clusters_{self.include_clusters}_variance_known_{self.variance_known}', cpp_options={'STAN_THREADS': True})
+
         # set path based on input
         self.init_path = '/home/garren/Documents/MEng/Code/Latest_results/HPC Files/Hybrid PMF/Subsets'
         self.set_path()
@@ -40,7 +42,10 @@ class PostProcess:
         for i in range(len(Idx_known)):
             self.Sparse[Idx_known[i,0], Idx_known[i,1]] = 1
             self.Sparse[Idx_known[i,1], Idx_known[i,0]] = 1
-        
+    
+    def set_model(self):
+        self.model = cmdstanpy.CmdStanModel(exe_file=f'/home/garren/HPC Files/Hybrid PMF/Stan Models/Hybrid_PMF_include_clusters_{self.include_clusters}_variance_known_{self.variance_known}', cpp_options={'STAN_THREADS': True})
+
     def set_path(self): # sets the path initially and if some inputs are changed
         self.path = self.init_path
         for group in self.functional_groups:
@@ -99,40 +104,54 @@ class PostProcess:
         # Load the stan csv files
         if self.inf_type == 'MAP':
             # get csv_files
-            csv_files = [
-                f'{self.path}/{i}/{f}' 
-                for i in np.sort(os.listdir(self.path)) 
-                if i.isdigit()  # Check if the directory name is an integer
-                for f in os.listdir(f'{self.path}/{i}') 
-                if f.endswith('.csv')
-            ]
+            csv_files = [f'{self.path}/{i}' for i in np.sort(os.listdir(self.path)) if i.isdigit()]
 
-            # test csv_files
+            # Obtain inits corresponding to max_lp
             MAP = []
-            for file in csv_files:
+            for i in range(len(csv_files)):
                 try:
-                    MAP += [cmdstanpy.from_csv(file)]
+                    csv_file = f'{csv_files[i]}/{[f for f in os.listdir(csv_files[i]) if f.endswith('.csv')][0]}'
+                    MAP += [cmdstanpy.from_csv(csv_file)]
                 except:
-                    print(f'Faulty csv file: {file}')
-                    print('Skipping...')
-            
+                    try: 
+                        MAP += [f'{csv_files[i]}/inits.json']
+                    except:
+                        print(f'Faulty csv and json file in {csv_files[i]}')
+                try:
+                    del csv_file
+                except:
+                    print('')
             # Extract max lp
-            max_lp = np.argmax([map.optimized_params_dict['lp__'] for map in MAP])
-            MAP = MAP[max_lp]
+            lp = []
+            for map in MAP:
+                try:
+                    lp += [map.optimized_params_dict['lp__']]
+                except:
+                    lp += [self.model.log_prob(data=self.data_file, params=map).iloc[0,0]]
+            max_lp = np.argmax(lp)
+
+            # Save MAP to dict
+            try:
+                MAP = MAP[max_lp].stan_variables()
+            except:
+                MAP = json.load(open(MAP[max_lp], 'r'))
+                keys = list(MAP.keys())
+                for key in keys:
+                    MAP[key] = np.array(MAP[key])
 
             if self.include_clusters:
                 C = np.array(json.load(open(self.data_file, 'r'))['C'])
                 D = json.load(open(self.data_file, 'r'))['D']
                 v_cluster = np.array(json.load(open(self.data_file, 'r'))['v_cluster'])
                 sigma_cluster = (np.sqrt(v_cluster)[np.newaxis,:] * np.ones(D)[:,np.newaxis]) @ C
-                U = sigma_cluster[np.newaxis,:,:] * MAP.U_raw + MAP.U_raw_means @ C[np.newaxis,:,:]
-                V = sigma_cluster[np.newaxis,:,:] * MAP.V_raw + MAP.V_raw_means @ C[np.newaxis,:,:]
+                U = sigma_cluster[np.newaxis,:,:] * MAP['U_raw'] + MAP['U_raw_means'] @ C[np.newaxis,:,:]
+                V = sigma_cluster[np.newaxis,:,:] * MAP['V_raw'] + MAP['V_raw_means'] @ C[np.newaxis,:,:]
             
             else:
-                U = MAP.U_raw
-                V = MAP.V_raw
+                U = MAP['U_raw']
+                V = MAP['V_raw']
 
-            v_ARD = np.diag(MAP.v_ARD)[np.newaxis, :, :]
+            v_ARD = np.diag(MAP['v_ARD'])[np.newaxis, :, :]
 
             A = U.transpose(0, 2, 1) @ v_ARD @ V
 
