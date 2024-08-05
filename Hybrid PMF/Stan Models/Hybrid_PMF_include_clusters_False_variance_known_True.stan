@@ -77,18 +77,14 @@
     parameters {
         array[4] matrix[D,N] U_raw;                 // feature matrices U
         array[4] matrix[D,N] V_raw;                 // feature matrices V
-        real<lower=0, upper=scale_upper> scale;     // scale dictating the strenght of ARD effect
         vector<lower=0>[D] sigma_ARD; // ARD standard deviations transformed to uniform scale
     }
 
     transformed parameters {
-        vector[D] v_ARD = (scale * sigma_ARD) .^ 2; // effective ARD variances; sqrt(v_ARD) ~ half-cauchy(0, scale)
+        vector[D] v_ARD = (scale_upper * sigma_ARD) .^ 2; // effective ARD variances; sqrt(v_ARD) ~ half-cauchy(0, scale_upper)
     }
     
     model {
-        // Exponential prior on scale
-        scale ~ exponential(5);
-
         // half-cauhcy prior for standard deviation of the feature matrices
         sigma_ARD ~ cauchy(0, 1);
     
@@ -101,7 +97,8 @@
         // Likelihood function
         target += reduce_sum(ps_like, N_slice, grainsize, y, x, T, U_raw, 
                                 V_raw, v_ARD, v, scaling, a, error, N_points,
-                                Idx_known, mapping, var_data);}
+                                Idx_known, mapping, var_data);
+    }
 
     generated quantities {
         vector[N_known] log_lik;
