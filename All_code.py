@@ -32,7 +32,7 @@ class subsets():
         self.functional_groups = functional_groups
 
     def get_IUPAC(self):
-        with pd.ExcelFile("All Data.xlsx") as f:
+        with pd.ExcelFile("/home/garren/HPC Files/All Data.xlsx") as f:
             comp_names = pd.read_excel(f, sheet_name='Pure compounds')
             self.functional_groups = np.sort(self.functional_groups)
         if self.functional_groups[0] == 'all':
@@ -49,7 +49,7 @@ class subsets():
         # Get the IUPAC names based on the functional groups
         IUPAC_names = self.get_IUPAC()
         # read data
-        with pd.ExcelFile("Sorted Data.xlsx") as f:
+        with pd.ExcelFile("/home/garren/HPC Files/Sorted Data.xlsx") as f:
             sorted_df = pd.read_excel(f, sheet_name='Data') # Data
             Indices = pd.read_excel(f, sheet_name='Indices') # start and stop indices for each datasets nand temperature
             Indices_T = pd.read_excel(f, sheet_name='Indices_T') # start and stop indices with all temperatures
