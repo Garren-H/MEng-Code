@@ -18,12 +18,11 @@ from multiprocessing import Pool
 # Append path to obtain other functions
 sys.path.append('/home/22796002')
 
-from generate_stan_model_code import generate_stan_code # type: ignore
 from All_code import subsets
 import k_means
 
-# Change this line to match the functional groups to extract
-functional_groups = np.array(['Alkane', 'Primary alcohol'])
+func_groups_string = sys.argv[1] # functional groups to extract
+functional_groups = func_groups_string.split(',') # restructure to numpy array 
 
 # get subset of data to work with
 subset_df, subset_Indices, subset_Indices_T, Info_Indices, init_indices, init_indices_T = subsets(functional_groups).get_subset_df()
@@ -57,29 +56,36 @@ idx = np.sum(np.char.add(Idx_unknown[:,0].astype(str), Idx_unknown[:,1].astype(s
 Idx_unknown = Idx_unknown[idx,:]
 N_unknown = int((N**2-N)/2 - N_known)
 v = 1e-3*np.ones(N_known)
-v_MC = 1
-T2_int = np.array([293.15, 298.15])
-x2_int = np.linspace(0, 1, 21)[1:-1]
-N_T = T2_int.shape[0]
+v_MC = 0.2
+x2_int = np.concatenate([np.append(np.linspace(0,0.45, 10)[1:], [0.495, 1-0.495]), np.linspace(0.55, 1, 10)[:-1]])
+T2_int = [288.15, 298.15, 308.15]
 N_C = x2_int.shape[0]
+N_T = len(T2_int)
 order = 3
 jitter = 1e-7
 
-# obtain cluster information; first;y obtain number of functional groups to give as maximum to the number of clusters
+# obtain cluster information; firstly obtain number of functional groups to give as maximum to the number of clusters
 with pd.ExcelFile("/home/22796002/All Data.xlsx") as f:
     comp_names = pd.read_excel(f, sheet_name='Pure compounds')
     functional_groups = np.sort(functional_groups)
-if functional_groups[0] == 'all':
-    # if all return all functional groups
-    all_func = comp_names['Functional Group'].to_numpy()
-    IUPAC = comp_names['IUPAC'].to_numpy()
-else:
-    # else select only neccary functional groups
-    idx_name = (comp_names['Functional Group'].to_numpy()[:,np.newaxis] == np.array(functional_groups))
-    all_func = np.concatenate([comp_names['Functional Group'][idx_name[:,i]] for i in range(idx_name.shape[1])])
-    IUPAC = np.concatenate([comp_names['IUPAC'][idx_name[:,i]] for i in range(idx_name.shape[1])])
-num_funcs = np.unique(all_func).shape[0]
-C_K, Silhouette_K, C_best, K_best = k_means.k_means_clustering(functional_groups, 2, 4*num_funcs)
+    CA = comp_names['Self Cluster assignment'].to_numpy()
+    fg = comp_names['Functional Group'].to_numpy()
+    
+    if functional_groups[0] == 'all':
+        CA = CA
+    else:
+        idx = np.zeros(len(fg)).astype(int)
+        for i in functional_groups:
+            idx += (fg == i).astype(int)
+        idx = idx.astype(bool)
+        CA = CA[idx]
+        del idx
+
+    unique_CA = np.unique(CA)
+    C = (unique_CA[:,np.newaxis] == CA[np.newaxis,:]).astype(int)
+    K = len(unique_CA)
+
+    del comp_names, CA, fg
 
 # save data in dictionary
 data = {'N_known': int(N_known),
@@ -89,9 +95,9 @@ data = {'N_known': int(N_known),
         'x1': x.tolist(),
         'T1': T.tolist(),
         'y1': y.tolist(),
-        'N_T': int(N_T),
         'N_C': int(N_C),
-        'T2_int': T2_int.tolist(),
+        'N_T': int(N_T),
+        'T2_int': T2_int,
         'x2_int': x2_int.tolist(),
         'v_MC': v_MC,
         'grainsize': int(grainsize),
@@ -101,11 +107,13 @@ data = {'N_known': int(N_known),
         'Idx_unknown': (Idx_unknown+1).tolist(),
         'jitter': jitter,
         'v': v.tolist(),
-        'scale_upper': 1e-2}
+        'scale_cauchy': 1e-30}
 
-data['K'] = int(K_best)
-data['C'] = C_best.tolist()
-data['v_cluster'] = [0.1 for _ in range(K_best)] # may need to change
+data['K'] = int(K)
+data['C'] = C.tolist()
+data['v_cluster'] = [(0.1)**2 for _ in range(K)] # may need to change
+
+data['sigma_refT'] = [0.1, 1e-5, 0.1] # may need to change
 
 # save data to json file
 data_file = f'{path}/data.json'

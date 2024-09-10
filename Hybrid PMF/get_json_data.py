@@ -11,8 +11,8 @@ sys.path.insert(0, '/home/ghermanus/lustre') # include home directory in path to
 from All_code import subsets # python script that extracts data for functional group of interest
 import k_means
 
-# Change this line to match the functional groups to extract
-functional_groups = np.array(['Alkane', 'Primary alcohol'])
+func_groups_string = sys.argv[1] # functional groups to extract
+functional_groups = func_groups_string.split('.') # restructure to numpy array 
 
 # create file to store stan models and results
 path = 'Subsets/'
@@ -45,7 +45,7 @@ scaling = np.array([1, 1e-3, 1e2, 1])
 grainsize = 1
 a = 0.3
 N = np.max(Info_Indices['Component names']['Index'])+1
-D = N
+D = np.min([N,20])
 Idx_known = subset_df.iloc[subset_Indices_T[:,0],7:9].to_numpy()
 
 # obtain known data variance

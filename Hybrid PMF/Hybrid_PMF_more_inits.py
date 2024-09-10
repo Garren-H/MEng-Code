@@ -27,7 +27,7 @@ from generate_stan_model_code import generate_stan_code #type: ignore
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
 func_groups_string = sys.argv[3] # functional groups to extract
-functional_groups = func_groups_string.split(',') # restructure to numpy array 
+functional_groups = func_groups_string.split('.') # restructure to numpy array 
 chain_id = int(sys.argv[4]) # chain id
 
 print('Evaluating the following conditions for the Hybrid Model:')
@@ -62,20 +62,22 @@ inits2 = f'{output_dir2}/inits.json'
 num_warmup = 1000
 num_samples = 100
 
-# Update initial inits with MAP from previous
-csv_file = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if f.endswith('.csv')][0]
-MAP = cmdstanpy.from_csv(csv_file)
-init = {}
-keys = MAP.stan_variables().keys()
-for key in keys:
-    try:
-        init[key] = MAP.stan_variables()[key].tolist()
-    except:
-        init[key] = MAP.stan_variables()[key]
-with open(inits2, 'w') as f:
-    json.dump(init, f)
-
-del csv_file, MAP, init
+try:
+    # Update initial inits with MAP from previous
+    csv_file = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if f.endswith('.csv')][0]
+    MAP = cmdstanpy.from_csv(csv_file)
+    init = {}
+    keys = MAP.stan_variables().keys()
+    for key in keys:
+        try:
+            init[key] = MAP.stan_variables()[key].tolist()
+        except:
+            init[key] = MAP.stan_variables()[key]
+    with open(inits2, 'w') as f:
+        json.dump(init, f)
+    del csv_file, MAP, init
+except:
+    pass
 
 e=True
 max_iter=20
@@ -101,7 +103,7 @@ while e and iter<max_iter:
     try:
         prev_csv_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
         MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=1000000, refresh=1000, 
-                        algorithm='lbfgs', jacobian=True, tol_rel_grad=1e-20, tol_rel_obj=1e-20)
+                        algorithm='lbfgs', jacobian=True, tol_rel_grad=1e-20, tol_rel_obj=1e-20, tol_param=1e-10)
         e=False
         for f in prev_csv_files:
             os.remove(f)

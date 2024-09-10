@@ -12,116 +12,90 @@ import cmdstanpy # type: ignore
 os.environ['TMPDIR'] = old_tmp # change back to old_tmp
 
 import sys
-import pandas as pd # type: ignore
-from multiprocessing import Pool
 
-# Append path to obtain other functions
-sys.path.append('/home/22796002')
-
-from generate_stan_model_code import generate_stan_code # type: ignore
-from All_code import subsets
-import k_means
-
-# get arguments from command line
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
-variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
-variance_MC_known = bool(int(sys.argv[3])) # True if you want to use known variance information for MC
-func_groups_string = sys.argv[4] # functional groups to extract
-functional_groups = func_groups_string.split(',') # restructure to numpy array 
-chain_id = int(sys.argv[5]) # chain id
+add_zeros = bool(int(sys.argv[2])) # True if we need to add zeros
+refT = bool(int(sys.argv[3])) # True if we need to add reference temperature
+ARD = bool(int(sys.argv[4])) # True if we need to add ARD
+functional_group_string = sys.argv[5] # functional groups
+functional_groups = functional_group_string.split(',') # process functional groups into array
+chain_id = int(sys.argv[6]) # chain id
+num_non_zero_ARD = 1+2*(chain_id+1) # number of non-zero ARD values
 
-
-# create file to store stan models and results
-path = 'Subsets/'
-
-for functional_group in functional_groups:
-    if path == 'Subsets/':
-        path += f'{functional_group}'
-    else:
-        path += f'_{functional_group}'
-
+# data file
+path = f'Subsets/'
+path += functional_groups[0]
+for functional_group in functional_groups[1:]:
+    path += f'_{functional_group}'
 data_file = f'{path}/data.json'
+path += f'/Include_clusters_{include_clusters}/RefT_{refT}/Add_zeros_{add_zeros}'
 
-path += f'/Include_clusters_{include_clusters}/Variance_known_{variance_known}/Variance_MC_known_{variance_MC_known}'
+#Adjust data
+data = json.load(open(data_file, 'r'))
+data['D'] = num_non_zero_ARD
+if not ARD:
+    data['v_ARD'] = np.array([100 for _ in range(num_non_zero_ARD)])
 
-print('Evaluating the following conditions for the Pure RK PMF Model:')
-print(f'Include clusters: {include_clusters}')
-print(f'Variance known: {variance_known}')
-print(f'Variance MC known: {variance_MC_known}')
-
-# compile stan model
-exe_file = f'/home/22796002/Pure RK PMF/Stan Models/Pure_PMF_Include_clusters_{include_clusters}_Variance_known_{variance_known}_Variance_MC_known_{variance_MC_known}'
-model = cmdstanpy.CmdStanModel(exe_file=exe_file, cpp_options={'STAN_THREADS': True})
+# select stan models with and without ARD
+stan_file = f'Stan Models/Pure_PMF_include_clusters_{include_clusters}_zeros_{add_zeros}_refT_{refT}_ARD_{ARD}.stan'
+model = cmdstanpy.CmdStanModel(stan_file=stan_file, cpp_options={'STAN_THREADS': True})
 
 # set number of chains and threads per chain
 chains = 1
-threads_per_chain = 4
+threads_per_chain = 1
 
 # Total threads for stan to use for parallel computations
 os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 
 # Directories to store output
-output_dir1 = f'{path}/Initializations/{chain_id}'
-output_dir2 = f'{path}/MAP/{chain_id}'
+output_dir2 = f'{path}/MAP/{num_non_zero_ARD}'
 
 # Directory of init file
 inits2 = f'{output_dir2}/inits.json'
 
-# Number of warmup and sampling iterations for initializations
-num_warmup = 1000
-num_samples = 100
-
-# Update initial inits with MAP from previous
-csv_file = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if f.endswith('.csv')][0]
-MAP = cmdstanpy.from_csv(csv_file)
-init = {}
-keys = MAP.stan_variables().keys()
-for key in keys:
-    try:
-        init[key] = MAP.stan_variables()[key].tolist()
-    except:
-        init[key] = MAP.stan_variables()[key]
-with open(inits2, 'w') as f:
-    json.dump(init, f)
-
-del csv_file, MAP, init
-
-# Run sampling and MAP steps
-e=True
-max_iter=20
-iter=0
-while e and iter<max_iter:
-    # Run initial sampling
-    fit = model.sample(data=data_file, output_dir=output_dir1,
-                        refresh=100, iter_warmup=num_warmup, 
-                        iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
-                        threads_per_chain=threads_per_chain, max_treedepth=5, inits=inits2)
-    
-    #save inits from previous step
-    max_lp = np.argmax(fit.method_variables()['lp__'].T.flatten())
-    dict_keys = list(fit.stan_variables().keys())
+#update inits file with previous MAP and delete previous MAP files
+try:
+    csv_file = [f'{output_dir2}/{file}' for file in os.listdir(output_dir2) if file.endswith('.csv')][0]
+    MAP = cmdstanpy.from_csv(csv_file)
     init = {}
-    for key in dict_keys:
+    keys = list(MAP.stan_variables().keys())
+    for key in keys:
         try:
-            init[key] = fit.stan_variables()[key][max_lp].tolist()
+            init[key] = MAP.stan_variables()[key].tolist()
         except:
-            init[key] = fit.stan_variables()[key][max_lp]
+            init[key] = MAP.stan_variables()[key]
     with open(inits2, 'w') as f:
         json.dump(init, f)
-    del fit, init
 
-    try: # Run MAP step and break loop if successful
-        # get all files in directory before running MAP (exluding json files)
-        prev_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
-        MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=1000000, refresh=1000, 
-                        algorithm='lbfgs', jacobian=False, tol_rel_grad=1e-20, tol_rel_obj=1e-20)
-        e=False
-        # remove all files in directory before running MAP (exluding json files)
-        for f in prev_files:
-            os.remove(f)
-    except: # Remove all files in directory if MAP fails
-        delete_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
-        for f in delete_files:
-            os.remove(f)
-        e=True
-        iter+=1
+    del MAP, init
+except:
+    pass
+
+#delete previous MAP files
+try:
+    del_files = [f'{output_dir2}/{file}' for file in os.listdir(output_dir2) if not file.endswith('.json')]
+    for file in del_files:
+        os.remove(file)
+except:
+    pass
+
+
+print('Running Pure PMF Model with the following conditions:')
+print(f'Include clusters: {include_clusters}')
+print(f'Zeros: {add_zeros}')
+print(f'Reference temperature: {refT}')
+print(f'ARD: {False}')
+# Run MAP step
+try:
+    print(f'Initial ARD values: {json.load(open(inits2, 'r'))['v_ARD']}')
+except:
+    print(f'Initial ARD values: {data['v_ARD'].tolist()}')
+
+MAP = model.optimize(data=data, inits=inits2, show_console=True,  iter=1000000, refresh=1000, 
+                algorithm='lbfgs', jacobian=False, tol_rel_grad=1e-20, tol_rel_obj=1e-20, tol_param=1e-10,
+                tol_grad=1e-20, output_dir=output_dir2, init_alpha=1e-20)
+
+try:
+    print(f'Final MAP values{MAP.v_ARD.tolist()}')
+except:
+    print(f'Final MAP values{data['v_ARD'].tolist()}')

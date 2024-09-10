@@ -16,4 +16,4 @@ module load app/stan/2.34
 
 python3 compile_stan_models.py
 
-# usage for PBS: qsub -v include_clusters=0,variance_known=1,variance_MC_known=1,rank=1 Pure_PMF.sh
+# usage for PBS: qsub Pure_PMF.sh

@@ -4,7 +4,7 @@ from sklearn.cluster import KMeans # type: ignore
 from sklearn.metrics import silhouette_score # type: ignore
 
 def get_subset_data(functional_groups):
-    with pd.ExcelFile('All Data.xlsx') as f:
+    with pd.ExcelFile('/home/garren/HPC Files/All Data.xlsx') as f:
         PureData_df = pd.read_excel(f, sheet_name='Pure compounds')
     if functional_groups[0] == 'all':
         subset_df = PureData_df.copy()

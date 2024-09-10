@@ -155,18 +155,19 @@ def generate_stan_code(include_clusters=False, variance_known=False):
     model_code += '''
         array[4] matrix[D,N] U_raw;                 // feature matrices U
         array[4] matrix[D,N] V_raw;                 // feature matrices V
-        vector<lower=0>[D] sigma_ARD;               // ARD standard deviations scaled
+        vector[D] sigma_ARD_raw;                    // ARD standard deviations scaled; unconstrained
     }
 
     transformed parameters {
-        vector[D] v_ARD = (scale_upper * sigma_ARD) .^ 2; // effective ARD variances; sqrt(v_ARD) ~ half-cauchy(0, scale_upper)
+        vector[D] v_ARD = (scale_upper * exp(sigma_ARD_raw)) .^ 2; // effective ARD variances; sqrt(v_ARD) ~ half-cauchy(0, scale_upper)
     }
     '''
 
     model_code += '''
     model {
         // half-cauhcy prior for standard deviation of the feature matrices
-        sigma_ARD ~ cauchy(0, 1);
+        exp(sigma_ARD_raw) ~ cauchy(0, 1);
+        target += sum(sigma_ARD_raw);
     '''
 
     if not variance_known: # include data-model variance as parameter prior to model

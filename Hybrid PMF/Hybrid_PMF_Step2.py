@@ -17,7 +17,7 @@ import sys
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
 func_groups_string = sys.argv[3] # functional groups to extract
-functional_groups = func_groups_string.split(',') # restructure to numpy array 
+functional_groups = func_groups_string.split('.') # restructure to numpy array 
 
 print('Evaluating the following conditions for the Hybrid Model:')
 print(f'Include clusters: {include_clusters}')

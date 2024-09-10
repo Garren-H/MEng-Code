@@ -14,6 +14,6 @@ cd Pure\ RK\ PMF
 
 module load app/stan/2.34
 
-python3 get_json_data.py
+python3 get_json_data.py "${func_groups_string}"
 
-# usage for PBS: qsub -v include_clusters=0,variance_known=1,variance_MC_known=1,rank=1 Pure_PMF.sh
+# usage for PBS: qsub -v func_groups_string='"Alkane,Primary alcohol"' get_json_data.sh

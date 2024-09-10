@@ -27,7 +27,7 @@ from generate_stan_model_code import generate_stan_code #type: ignore
 include_clusters = bool(int(sys.argv[1])) # True if we need to include cluster
 variance_known = bool(int(sys.argv[2])) # True if you want to use known variance information
 func_groups_string = sys.argv[3] # functional groups to extract
-functional_groups = func_groups_string.split(',') # restructure to numpy array 
+functional_groups = func_groups_string.split('.') # restructure to numpy array 
 chain_id = int(sys.argv[4]) # chain id
 
 print('Evaluating the following conditions for the Hybrid Model:')
@@ -62,20 +62,23 @@ os.makedirs(output_dir2)
 num_warmup = 1000
 num_samples = 100
 
+# randomly initialize v_ARD
+inits2 = f'{output_dir2}/inits.json'
+init = {'v_ARD': np.random.uniform(1e-50,2, size=json.load(open(data_file,'r'))['D']).tolist()}
+init['sigma_ARD_raw'] = np.log((np.sqrt(init['v_ARD']) / json.load(open(data_file,'r'))['scale_upper'])).tolist()
+with open(inits2, 'w') as f:
+    json.dump(init, f)
+
+del init
+
 e=True
 max_iter=20
 iter=0
 while e and iter<max_iter:
-    if iter == 0:
-        fit = model.sample(data=data_file, output_dir=output_dir1,
-                            refresh=100, iter_warmup=num_warmup, 
-                            iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
-                            threads_per_chain=threads_per_chain, max_treedepth=5)
-    else:
-        fit = model.sample(data=data_file, output_dir=output_dir1,
-                            refresh=100, iter_warmup=num_warmup, 
-                            iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
-                            threads_per_chain=threads_per_chain, max_treedepth=5, inits=inits2)
+    fit = model.sample(data=data_file, output_dir=output_dir1,
+                        refresh=100, iter_warmup=num_warmup, 
+                        iter_sampling=num_samples, chains=chains, parallel_chains=chains, 
+                        threads_per_chain=threads_per_chain, max_treedepth=5, inits=inits2)
     #save inits from previous step
     max_lp = np.argmax(fit.method_variables()['lp__'].T.flatten())
     dict_keys = list(fit.stan_variables().keys())
@@ -91,8 +94,8 @@ while e and iter<max_iter:
     del fit, init
 
     try:
-        MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=400000, refresh=1000, 
-                        algorithm='lbfgs', jacobian=True, tol_rel_grad=1e-20, tol_rel_obj=1e-20)
+        MAP = model.optimize(data=data_file, output_dir=output_dir2, inits=inits2, show_console=True,  iter=1000000, refresh=1000, 
+                        algorithm='lbfgs', jacobian=True, tol_rel_grad=1e-20, tol_rel_obj=1e-20, tol_param=1e-10)
         e=False
     except:
         delete_files = [f'{output_dir2}/{f}' for f in os.listdir(output_dir2) if not f.endswith('.json')]
