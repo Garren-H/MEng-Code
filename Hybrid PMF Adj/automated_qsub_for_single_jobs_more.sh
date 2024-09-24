@@ -13,9 +13,9 @@ func_groups_string="$4"
 total_jobs=$5
 
 if [[ "$func_groups_string" == "Alkane.Primary alcohol" ]]; then
-  job_name="Hybrid_PMF_AP"
+  job_name="AP"
 elif [[ "$func_groups_string" == "all" ]]; then
-  job_name="Hybrid_PMF_all"
+  job_name="all"
 else
   echo "Functional groups not in training set"
     exit 1

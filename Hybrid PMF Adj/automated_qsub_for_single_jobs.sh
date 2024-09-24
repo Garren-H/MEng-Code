@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # This script is used to sub jobs to the cluster as bathces
-if [ "$#" -ne 5 ]; then
-  echo "Usage: $0 <include_clusters> <include_zeros> <ARD> <func_groups_string> <total_jobs>"
+if [ "$#" -ne 6 ]; then
+  echo "Usage: $0 <include_clusters> <include_zeros> <ARD> <func_groups_string> <jobs_ID> <reps_per_job>"
   exit 1
 fi
 
@@ -10,12 +10,13 @@ include_clusters=$1
 include_zeros=$2
 ARD=$3
 func_groups_string="$4"
-total_jobs=$5
+job_ID=$5
+reps=$6
 
 if [[ "$func_groups_string" == "Alkane.Primary alcohol" ]]; then
-  job_name="Hybrid_PMF_AP"
+  job_name="AP"
 elif [[ "$func_groups_string" == "all" ]]; then
-  job_name="Hybrid_PMF_all"
+  job_name="all"
 else
   echo "Functional groups not in training set"
     exit 1
@@ -33,8 +34,8 @@ if [[ "$ARD" == "1" ]]; then
   job_name="$job_name"_a
 fi
 
-for ((i=0; i<total_jobs; i++)); do
-  qsub -N "$job_name"_"$i" -e "$job_name"_"$i".err -o "$job_name"_"$i".out -v include_clusters=$include_clusters,include_zeros=$include_zeros,ARD=$ARD,func_groups_string="$func_groups_string",chain_id=$i Hybrid_PMF.sh
+for ((j=0; j<reps; j++)); do
+  qsub -N "$job_name"_"$job_ID"_"$j" -e "$job_name"_"$job_ID"_"$j".err -o "$job_name"_"$job_ID"_"$j".out -v include_clusters=$include_clusters,include_zeros=$include_zeros,ARD=$ARD,func_groups_string="$func_groups_string",chain_id=$job_ID,rep=$j Hybrid_PMF.sh
 done
 
-# Usage: ./automated_qsub_for_single_jobs.sh 0 0 0 "Alkane.Primary alcohol" 6
+# Usage: ./automated_qsub_for_single_jobs.sh 0 0 0 "Alkane.Primary alcohol" 0 10

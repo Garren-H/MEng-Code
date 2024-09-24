@@ -20,6 +20,8 @@ ARD = bool(int(sys.argv[3])) # True if you want to use ARD
 func_groups_string = sys.argv[4] # functional groups to extract
 functional_groups = func_groups_string.split('.') # restructure to numpy array 
 chain_id = int(sys.argv[5]) # chain id
+rep = int(sys.argv[6]) # id of repetitions
+
 num_non_zero_ARD = 2+chain_id*3 # number of non-zero ARD values
 
 print('Evaluating the following conditions for the Hybrid Model:')
@@ -54,7 +56,7 @@ os.environ['STAN_NUM_THREADS'] = str(int(threads_per_chain*chains))
 model = cmdstanpy.CmdStanModel(exe_file=f'/home/ghermanus/lustre/Hybrid PMF Adj/Stan Models/Hybrid_PMF_include_clusters_{include_clusters}_include_zeros_{include_zeros}_ARD_{ARD}')
 
 # Step 1. Run sampling with random initialzations, but ARD variances initialized
-output_dir2 = f'{path}/MAP/{num_non_zero_ARD}'
+output_dir2 = f'{path}/MAP/{num_non_zero_ARD}/{rep}'
 os.makedirs(output_dir2)
 
 # inits directory

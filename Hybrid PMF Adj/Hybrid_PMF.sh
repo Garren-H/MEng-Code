@@ -17,8 +17,8 @@ source /apps/chpc/chem/anaconda3-2021.11/bin/activate /home/ghermanus/cmdstan_co
 
 cd /home/ghermanus/lustre/Hybrid\ PMF\ Adj
 
-python3 Hybrid_PMF.py ${include_clusters} ${include_zeros} ${ARD} "${func_groups_string}" $chain_id
+python3 Hybrid_PMF.py ${include_clusters} ${include_zeros} ${ARD} "${func_groups_string}" $chain_id $rep
 
 conda deactivate
 
-# usage for PBS: qsub -N Hybrid_PMF -e Hybrid_PMF.err -o Hybrid_PMF.out -v include_clusters=0,include_zeros=0,ARD=0,func_groups_string="Alkane.Primary alcohol",chain_id=0 Hybrid_PMF.sh
+# usage for PBS: qsub -N Hybrid_PMF -e Hybrid_PMF.err -o Hybrid_PMF.out -v include_clusters=0,include_zeros=0,ARD=0,func_groups_string="Alkane.Primary alcohol",chain_id=0,rep=0 Hybrid_PMF.sh

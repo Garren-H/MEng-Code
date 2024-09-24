@@ -74,11 +74,34 @@ try:
         json.dump(init, f)
     del MAP, init
 except:
-    pass
+    try:
+        csv_files = [f'{output_dir2}/{i}/{f}' for i in os.listdir(output_dir2) if i.isdigit() for f in os.listdir(f'{output_dir2}/{i}') if f.endswith('.csv')]
+        lp = []
+        MAP = []
+        for file in csv_files:
+            try:
+                MAP += [cmdstanpy.from_csv(file)]
+                lp += [MAP[-1].optimized_params_dict['lp__']]
+            except:
+                pass
+        max_lp = np.argmax(lp)
+        MAP = MAP[max_lp]
+        keys = list(MAP.stan_variables().keys())
+        init = {}
+        for key in keys:
+            try:
+                init[key] = MAP.stan_variables()[key].tolist()
+            except:
+                init[key] = MAP.stan_variables()[key]
+        with open(inits2, 'w') as f:
+            json.dump(init, f)
+        del MAP, init
+    except:
+        pass
 
 # delete previous MAP files
 try:
-    del_files = [f'{output_dir2}/{file}' for file in os.listdir(output_dir2) if not file.endswith('.json')]
+    del_files = [f'{output_dir2}/{file}' for file in os.listdir(output_dir2) if file.endswith('.csv') or file.endswith('.txt')]
     for file in del_files:
         os.remove(file)
 except:
