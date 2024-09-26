@@ -95,12 +95,12 @@ class Post_process:
                     T = T[:, np.newaxis]
                 elif p12.ndim == 3:
                     T = T[:, np.newaxis, np.newaxis]
-            if p12.dim == 2:
+            if p12.ndim == 2:
                 t12 = p12[:,0][np.newaxis,:] + p12[:,1][np.newaxis,:] * T + p12[:,2][np.newaxis,:] / T + p12[:,3][np.newaxis,:] * np.log(T)
                 t21 = p21[:,0][np.newaxis,:] + p21[:,1][np.newaxis,:] * T + p21[:,2][np.newaxis,:] / T + p21[:,3][np.newaxis,:] * np.log(T)
                 dt12_dT = p12[:,1][np.newaxis,:] - p12[:,2][np.newaxis,:] / T**2 + p12[:,3][np.newaxis,:] / T
                 dt21_dT = p21[:,1][np.newaxis,:] - p21[:,2][np.newaxis,:] / T**2 + p21[:,3][np.newaxis,:] / T
-            elif p12.dim == 3:
+            elif p12.ndim == 3:
                 t12 = p12[:,:,0][np.newaxis,:,:] + p12[:,:,1][np.newaxis,:,:] * T + p12[:,:,2][np.newaxis,:,:] / T + p12[:,:,3][np.newaxis,:,:] * np.log(T)
                 t21 = p21[:,:,0][np.newaxis,:,:] + p21[:,:,1][np.newaxis,:,:] * T + p21[:,:,2][np.newaxis,:,:] / T + p21[:,:,3][np.newaxis,:,:] * np.log(T)
                 dt12_dT = p12[:,:,1][np.newaxis,:,:] - p12[:,:,2][np.newaxis,:,:] / T**2 + p12[:,:,3][np.newaxis,:,:] / T
@@ -128,7 +128,7 @@ class Post_process:
         self.log_obj = []
         # set sran models for log_obj calculation
         stan_path = '/home/garren/HPC Files/Hybrid PMF Adj/Stan Models'
-        stan_file = f'{stan_path}/Pure_PMF_include_clusters_{self.include_clusters}_include_zeros_{self.include_zeros}_ARD_{self.ARD}.stan'
+        stan_file = f'{stan_path}/Hybrid_PMF_include_clusters_{self.include_clusters}_include_zeros_{self.include_zeros}_ARD_{self.ARD}.stan'
         model = cmdstanpy.CmdStanModel(stan_file=stan_file)
         A = [] # list of all A tensors to be converted to strings
         
@@ -154,7 +154,7 @@ class Post_process:
                     del inits_file
                 data = json.load(open(self.data_file, 'r'))
                 data['D'] = rank
-                data['v_ARD'] = 100*np.ones(rank)
+                data['v_ARD'] = 0.1*np.ones(rank)
                 self.log_prob += [model.log_prob(data=data, params=m).iloc[0,0]]
                 self.log_obj += [np.log(-self.log_prob[-1])]
 
@@ -171,7 +171,7 @@ class Post_process:
                 if self.ARD:
                     v_ARD = np.diag(m["v_ARD"])[np.newaxis,:,:]
                 else:
-                    v_ARD = 0.1*np.eye(rank)[np.newaxis,:,:]
+                    v_ARD = np.diag(data['v_ARD'])[np.newaxis,:,:]
                 
                 A += [U.transpose(0,2,1) @ v_ARD @ V]
 
@@ -212,13 +212,13 @@ class Post_process:
         if A is None:
             A = self.get_tensors()
 
-        scaling = np.array(json.load(self.data_file, 'r')['scaling'])
+        scaling = np.array(json.load(open(self.data_file, 'r'))['scaling'])
         if self.inf_type == 'MAP':
-            p12 = A[:,:,Idx[:,0],Idx[:,1]] * scaling[np.newaxis,:]
-            p21 = A[:,:,Idx[:,1],Idx[:,0]] * scaling[np.newaxis,:]
+            p12 = A[:,:,Idx[:,0],Idx[:,1]] * scaling[np.newaxis,:,np.newaxis]
+            p21 = A[:,:,Idx[:,1],Idx[:,0]] * scaling[np.newaxis,:,np.newaxis]
         elif self.inf_type == 'Sampling':
-            p12 = A[:,:,:,Idx[:,0],Idx[:,1]] * scaling[np.newaxis,np.newaxis,:]
-            p21 = A[:,:,:,Idx[:,1],Idx[:,0]] * scaling[np.newaxis,np.newaxis,:]
+            p12 = A[:,:,:,Idx[:,0],Idx[:,1]] * scaling[np.newaxis,np.newaxis,:,np.newaxis]
+            p21 = A[:,:,:,Idx[:,1],Idx[:,0]] * scaling[np.newaxis,np.newaxis,:,np.newaxis]
         
         # if MAP return p12 of size ranks x 4 x Idx[0]
         # if sampling return p12 of size ranks x samples x 4 x Idx[0]
@@ -227,7 +227,7 @@ class Post_process:
     def get_reconstructed_values(self, A=None):
         if A is None:
             A = self.get_tensors()
-        p12, p21 = self.extract_params(self.Idx_known, A=A)
+        p12, p21 = self.extract_params(Idx=self.Idx_known, A=A)
 
         N_known = json.load(open(self.data_file, 'r'))['N_known']
         N_points = np.array(json.load(open(self.data_file, 'r'))['N_points'])
@@ -239,7 +239,7 @@ class Post_process:
                      'c2': [],
                      'x': x,
                      'T': T,
-                     'y_exp': np.array(json.load(open(self.data_file, 'r'))['y1'])}
+                     'y_exp': np.array(json.load(open(self.data_file, 'r'))['y'])}
 
         if self.inf_type == 'MAP':
             y_MC = []
@@ -860,17 +860,15 @@ class Post_process:
         
         if data_type == 'Testing':
             Idx = self.testing_indices
-            y_MC_interp = self.extract_interps(A=A, Idx=Idx)
             data_dict = self.get_testing_values(A=A)
         elif data_type == 'Training':
             Idx = self.Idx_known
-            y_MC_interp = self.extract_interps(A=A, Idx=Idx)
             data_dict = self.get_reconstructed_values(A=A)
         else:
             print('Please specify data type')
             return
         
-        p12, p21 = self.extract_params(A=A)
+        p12, p21 = self.extract_params(A=A,Idx=Idx)
 
         excel_UNI_sheet = f'{data_type}_Plots'
         
@@ -959,7 +957,7 @@ class Post_process:
                 plt.tick_params(axis='both', which='major', labelsize=15)
                 plt.tight_layout()
 
-                fig_path = f'{png_path}/{j}_{i}_{self.inf_typepe}.png'
+                fig_path = f'{png_path}/{j}_{i}.png'
                 fig.savefig(fig_path, dpi=300)
                 plt.clf()
                 plt.close()
@@ -987,7 +985,7 @@ class Post_process:
                                                                                           Idx_test_and_train[:,1].astype(str))[np.newaxis,:], axis=1) == 0
         
         Idx_unknown = Idx_unknown_all[idx_keep]
-        p12, p21 = self.extract_params(A=A)
+        p12, p21 = self.extract_params(A=A, Idx=Idx_unknown)
         y_MC_unknown_all = []
 
         c1 = self.c_all[Idx_unknown[:,0]]
@@ -1003,8 +1001,8 @@ class Post_process:
             elif self.inf_type == 'Sampling':
                 y_MC = self.excess_enthalpy_predictions(UNIFAC_x[idx], UNIFAC_T[idx], p12[:,:,:,j], p21[:,:,:,j])
                 y_MC_unknown_all += [np.mean(y_MC, axis=-1)]
-            RMSE += [np.sqrt(np.mean((UNIFAC_y[idx][np.newaxis,:] - y_MC_unknown_all[-1])**2, axis=1))]
-            MAE += [np.mean(np.abs(UNIFAC_y[idx][np.newaxis,:] - y_MC_unknown_all[-1]), axis=1)]
+            RMSE += [np.sqrt(np.mean((UNIFAC_y[idx][:,np.newaxis] - y_MC_unknown_all[-1])**2, axis=0))]
+            MAE += [np.mean(np.abs(UNIFAC_y[idx][:,np.newaxis] - y_MC_unknown_all[-1]), axis=0)]
         
         RMSE = np.array(RMSE)
         MAE = np.array(MAE)

@@ -69,7 +69,7 @@ for key in keys:
 
 with open(inits2, 'w') as f:
     json.dump(init, f)
-del init, MAP_csv_files, MAP_csv_files, MAP, keys
+del init, MAP_csv_files, MAP, keys
 
 try:
     print(f'Initial ARD values: {json.load(open(inits2, 'r'))['v_ARD']}')
