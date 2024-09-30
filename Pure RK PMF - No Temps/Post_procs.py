@@ -6,6 +6,8 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 import matplotlib
+from matplotlib.lines import Line2D
+import matplotlib.cm as cm
 import json
 from IPython.display import clear_output
 
@@ -448,9 +450,13 @@ class Post_process:
             for m in range(len(self.ranks)):
                 if err_metric == 'MARE':
                     cutoff = 0.2
+                    legend_low = f'(<= {cutoff})'
+                    legend_high = f'(> {cutoff})'
                 else:
                     cutoff = 50
-
+                    legend_low = f'(<= {cutoff} J/mol)'
+                    legend_high = f'(> {cutoff} J/mol)'
+                    
                 diff_metrics = np.array(err_dict['MC', err_metric, self.ranks[m]][:-1]) - np.array(err_dict['UNIFAC', err_metric, ''][:-1])
 
                 uni_best = diff_metrics>0
@@ -494,6 +500,24 @@ class Post_process:
                 mid_points = (np.array(end_points[:-1])+np.array(end_points[1:]))/2
                 plt.xticks(mid_points, unique_fg, rotation=90, fontsize=12)
                 plt.yticks(mid_points, unique_fg, fontsize=12)
+
+                # Custom legend elements
+                # Get colors from colormaps
+                red_alpha_1 = cm.Reds(0.9999)  # Dark red
+                red_alpha_2 = cm.Reds(0.2)  # Light red
+                green_alpha_1 = cm.Greens(0.9999)  # Dark green
+                green_alpha_2 = cm.Greens(0.2)  # Light green
+
+                # Custom legend elements
+                custom_lines = [
+                    Line2D([0], [0], marker='s', color=red_alpha_1, markersize=10, label=f'MC best {legend_high}', linestyle=''),
+                    Line2D([0], [0], marker='s', color=red_alpha_2, markersize=10, label=f'MC best {legend_low}', linestyle=''),
+                    Line2D([0], [0], marker='s', color=green_alpha_1, markersize=10, label=f'UNIFAC best {legend_high}', linestyle=''),
+                    Line2D([0], [0], marker='s', color=green_alpha_2, markersize=10, label=f'UNIFAC best {legend_low}', linestyle=''),
+                    Line2D([0], [0], marker='*', color='k', markersize=3, alpha=0.5, label='Training Data', linestyle=''),
+                ]
+                # Add legend to the plot
+                plt.legend(handles=custom_lines, loc='lower center', bbox_to_anchor=(0.5, -0.35))
 
                 plt.tight_layout()
 
