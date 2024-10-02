@@ -5,3 +5,6 @@ was set up incorporating different prior information. These are listed under sta
 
 Inference is hence made on the interactions parameters of the NRTL model which in turn 
 describes the excess enthalpy.
+
+The code was contructed to run on a high performance cluster, hence the addition of several
+shell (.sh) scripts
