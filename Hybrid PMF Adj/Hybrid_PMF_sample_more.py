@@ -70,7 +70,7 @@ for i in range(chains):
         inits[i][key] = np.mean(fit_prev.stan_variables()[key][i*chains:(i+1)*chains], axis=0)
 
     metric[i]['inv_metric'] = fit_prev.metric[i]
-del prev_csv_files, fit_prev, keys
+del fit_prev, keys
 
 try:
     print(f'Initial ARD values: {inits[0]['v_ARD']}')

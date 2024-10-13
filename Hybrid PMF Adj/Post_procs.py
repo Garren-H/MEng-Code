@@ -986,8 +986,8 @@ class Post_process:
 
                 if plot_one:
                     if self.inf_type == 'Sampling':
-                        ax.fill_between(x_UNIFAC[T_UNIFAC_idx], yy_MC_025, yy_MC_975, color='r', alpha=0.5, label='MC 95% CI')
-                    ax.plot(x_UNIFAC[T_UNIFAC_idx], yy_MC_mean, '-r', label=f'MC Rank {ranks[0]}')
+                        ax.fill_between(x_UNIFAC[T_UNIFAC_idx], yy_MC_025.flatten(), yy_MC_975.flatten(), color='r', alpha=0.5, label='MC 95% CI')
+                    ax.plot(x_UNIFAC[T_UNIFAC_idx], yy_MC_mean.flatten(), '-r', label=f'MC Rank {ranks[0]}')
                     ax.plot(x_UNIFAC[T_UNIFAC_idx], yy_UNIFAC[T_UNIFAC_idx], '-g', label='UNIFAC')
                 else:
                     for m in range(len(ranks)):
