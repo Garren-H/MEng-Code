@@ -56,6 +56,8 @@ This code is dependent on the post-processing files in the Pure RK PMF, Pure RK 
 1. Hybrid PMF: Was an attempt at hyperparameter optimization through the incorporation of priors in a Bayesian framework and the usage of the ARD effect. These did not work as intended and should hence be ignored
 2. k_mean.py: Was intended to perform clustering for the Pure compounds using the densities and boiling temperature at normal conditions, along with the molecular weight. Using these properties, the cluster assignments were not reflective of the clusters that were expected and was hence excluded in the study.
 
+## Results
+Results from this project can be obtained from my [Google drive](https://drive.google.com/drive/folders/1aiV6-XudtHZq3hgYDniac6aWVv-3GWFF?usp=sharing)
 
 
 
