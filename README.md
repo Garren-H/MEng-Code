@@ -3,9 +3,9 @@
 The code listed in this reposistory is that developed in fullfilment of my masters' research project titled: **Prediction of excess enthalpy in binary mixture through probabilistic matrix completion** by *GR Hermanus (2024)*
 
 # Background on Project
-The topic deals with the use of probabilistic matrix completion (PMF) for the prediction of excess enthalpy in Binary mixtures across both temperatures and composition. Two methods were proposed: 
+The topic deals with the use of probabilistic matrix factorization (PMF) for the prediction/imputation of excess enthalpy in Binary mixtures across both temperatures and composition. Two methods were proposed: 
 1. **Pure Model**: Uses the excess enthalpy directly with a GP derived from a modified Redlich-Kister polynomial to ensure smoothness. PMF is applied to each combination of composition and temperature indepedently of one another, with the correlation of the GP enforcing correlation between the feature matrices at diferent conditions. This is not a valid Bayesian but rather a "typical" objective function
-2. **Hybrid Model**: Uses the NRTL and predicts the NRTL parameters. PMF is applied on each of the NRTL parameters independently. These then in turn informs the excess enthalpy shapes. This model is a fully Bayesian model and MAP estimation alog with sampling was performed.
+2. **Hybrid Model**: Uses the NRTL and predicts the NRTL parameters. PMF is applied on each of the NRTL parameters independently. These then in turn informs the excess enthalpy shapes. This model is a fully Bayesian model and MAP estimation along with sampling was performed.
 
 The proposed models were compared to one another and to UNIFAC as a baseline.
 
