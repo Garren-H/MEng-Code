@@ -14,6 +14,7 @@ The code was constructed for application in Python. Several dependencies are req
 1. Pandas: Processing the input data from excel sheets and converting to numpy arrays
 2. [Stan](https://github.com/stan-dev/stan) and [cmdstanpy](https://github.com/stan-dev/cmdstanpy): Performing optimization and Bayesian inference
 3. [Thermo](https://github.com/CalebBell/thermo): Prediction of excess enthalpy from UNIFAC
+4. Matplotlib: Required for post processing plots
 
 ## Description of files and directory flow
 
