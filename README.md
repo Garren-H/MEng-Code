@@ -43,6 +43,8 @@ The UNIFAC predictions were obtained by using the Thermo toolbox. Notebooks were
 5. TestingData_Final.xlsx: Contains the testing data along with the UNIFAC predictions at the conditions reported
 6. Sparsity.xlsx: Sheet showing the sparsity of the datasets collected in terms of compounds
 
+**No claim is made on any of the excess enthalpy data sourced.** The data was sourced from across journal articles. The reference from which the data was sourced is listed in TestingRefs.xlsx and TrainingRefs.xlsx
+
 ## Post-Processing files
 This code is dependent on the post-processing files in the Pure RK PMF, Pure RK PMF - No Temps and Hybrid PMF Adj directories depending on which script is being ran.
 1. Comparison_of_Pure_and_Hybrid_Models.ipynb: Code for plotting graphs which shows comparisons between the Pure and Hybrid model
